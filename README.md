@@ -2,7 +2,7 @@
 
 Integrate 3Shape DentalSystem more closely with the FC Express platform and increase your productivity!
 
-The ExpressDentalManager plugin lets you skip the Upload page on the FC Express platform by allowing upload directly from DentalManager.
+The ExpressDentalManager plugin lets you skip the Upload page on the FC Express platform by allowing upload directly from DentalManager (provided you have been set up as a user of FC Express).
 
 ### If you just want to use the plugin:
 
