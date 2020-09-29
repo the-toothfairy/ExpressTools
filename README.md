@@ -12,6 +12,6 @@ If you would like to see additional functionality for the plugin, or for other t
 
 ### If you want to understand the plugin, extend it, or write your own tools:
 
-Read the instructions in the Wiki on installing and using the plugin. Then clone the source code and happy coding!
+Read the instructions in the [Wiki](https://github.com/the-toothfairy/ExpressTools/wiki/) on installing and using the plugin. Then clone the source code and happy coding!
 
 If you would like to see additional functionality for the plugin, or for other tools you may find relevant, just open an issue on this site. If you would like to help us improve the code, open a pull request.
