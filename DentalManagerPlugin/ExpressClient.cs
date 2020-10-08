@@ -113,7 +113,6 @@ namespace DentalManagerPlugin
         /// <param name="email">identifies user/customer</param>
         /// <param name="password">user's/customer's secret</param>
         /// <param name="remember">whether to store authentication as persistent cookie</param>
-        /// <returns>true if logged in</returns>
         public async Task Login(string email, string password, bool remember)
         {
             var postData = new FormUrlEncodedContent(
