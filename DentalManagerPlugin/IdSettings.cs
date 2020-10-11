@@ -28,7 +28,7 @@ namespace DentalManagerPlugin
 
         public string UserLogin { get; set; }
 
-        public bool AlwaysUploadWhenQualified { get; set; }
+        public bool AlwaysUploadQualified { get; set; }
 
 
         private static string AppDataDir =>
