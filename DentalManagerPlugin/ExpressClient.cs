@@ -90,6 +90,50 @@ namespace DentalManagerPlugin
         }
 
         /// <summary>
+        /// POCO for deserialization
+        /// </summary>
+        public class ResultData
+        {
+            /// <summary> id </summary>
+            string eid { get; set; }
+            /// <summary> when order was uploaded, if at all </summary>
+            DateTime? CreatedUtc { get; set; }
+            /// <summary> code of any status </summary>
+            int? Status { get; set; }
+        }
+
+        /// <summary>
+        /// for <see cref="ResultData.Status"/>. True if new and now yet reviewed or reviewed but left undecided
+        /// </summary>
+        public static bool StatusIsReadyForReview(int st) => st == 0 || st == 3;
+
+        /// <summary>
+        /// for <see cref="ResultData.Status"/>
+        /// </summary>
+        public static bool StatusIsAcceptedDownloaded(int st) => st == 1;
+
+        /// <summary>
+        /// for <see cref="ResultData.Status"/>
+        /// </summary>
+        public static bool StatusIsRejected(int st) => st == 2;
+
+        /// <summary>
+        /// for <see cref="ResultData.Status"/>
+        /// </summary>
+        public static bool StatusIsInProgress(int st) => st == 10;
+
+        /// <summary>
+        /// for <see cref="ResultData.Status"/>. Can be true for various reasons
+        /// </summary>
+        public static bool StatusIsFailure(int st) => st == -3 || st == -2 || st == -1 || st == 11 || st == 12;
+
+        /// <summary>
+        /// for <see cref="ResultData.Status"/>
+        /// </summary>
+        public static bool StatusIsForward(int st) => st == 20 || st == 21 || st == 22 || st == 29;
+
+
+        /// <summary>
         /// refresh for current or optionally existing identity. If success, add the cookie to the default headers
         /// </summary>
         private async Task RefreshAntiforgeryToken()
@@ -142,6 +186,39 @@ namespace DentalManagerPlugin
         {
             // no antiforgery token needed
             await _httpClient.GetAsync("home/logout/");
+        }
+
+        /// <summary>
+        /// get status of order as identified by name
+        /// </summary>
+        /// <param name="orderName">order name</param>
+        /// <returns>a list of result data, status and created time for each. There can be multiple if the order has been uploaded
+        /// multiple times. The list can also be empty if there are no such orders. Null is returned on any error.</returns>
+        public async Task<List<ResultData>> GetStatus(string orderName)
+        {
+            try
+            {
+                var postData = new FormUrlEncodedContent(
+                    new List<KeyValuePair<string, string>>
+                    {
+                        new KeyValuePair<string, string>("orderName", orderName),
+                    });
+
+                var response = await _httpClient.PostAsync("api/Results/ForOrder", postData);
+                if (!response.IsSuccessStatusCode)
+                    return null;
+
+                if (response.StatusCode == HttpStatusCode.NoContent)
+                    return new List<ResultData>();
+
+                var sResp = await response.Content.ReadAsStringAsync();
+                var resultDatas = JsonConvert.DeserializeObject<List<ResultData>>(sResp);
+                return resultDatas;
+            }
+            catch (Exception e)
+            {
+                return null;
+            }
         }
 
         /// <summary>
