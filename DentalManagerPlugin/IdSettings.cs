@@ -28,6 +28,8 @@ namespace DentalManagerPlugin
 
         public string UserLogin { get; set; }
 
+        public bool AlwaysUploadWhenQualified { get; set; }
+
 
         private static string AppDataDir =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ExpressDmPlugin");
