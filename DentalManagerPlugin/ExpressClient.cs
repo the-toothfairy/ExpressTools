@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 
@@ -26,6 +27,7 @@ namespace DentalManagerPlugin
         public Cookie AuthCookie => _httpClientHandler.CookieContainer.GetCookies(_httpClient.BaseAddress)
             .FirstOrDefault(c => c.Name == AuthCookieName);
 
+
         /// <summary>
         /// construct a client
         /// </summary>
@@ -46,10 +48,9 @@ namespace DentalManagerPlugin
         }
 
         /// <summary>
-        /// check whether loggin in from previous cookie (persistent)
+        /// check whether log in from previous cookie (persistent) is still valid.
         /// </summary>
-        /// <returns>whether loggin in</returns>
-        public async Task<bool> IsLoggedIn(Cookie storedCookie)
+        public async Task<bool> CheckIfStillLoggedIn(Cookie storedCookie)
         {
             try
             {
@@ -59,6 +60,10 @@ namespace DentalManagerPlugin
                 if (storedCookie.Name != AuthCookieName || storedCookie.Expired)
                     return false;
 
+                //  Not if too little time left.
+                if (storedCookie.Expires > DateTime.UtcNow.AddMinutes(-15))
+                    return false;
+
                 _httpClientHandler.CookieContainer.Add(_httpClient.BaseAddress, storedCookie); // will replace any existing one
 
                 // make sure it works. may be first call, so must update anti-forgery first.
@@ -66,7 +71,9 @@ namespace DentalManagerPlugin
                 var response = await _httpClient.GetAsync("/Home/Ping");
 
                 if (response.IsSuccessStatusCode)
+                {
                     return true;
+                }
 
                 if (AuthCookie != null)
                     AuthCookie.Expired = true; // "delete" what we added
@@ -95,11 +102,11 @@ namespace DentalManagerPlugin
         public class ResultData
         {
             /// <summary> id </summary>
-            string eid { get; set; }
+            public string eid { get; set; }
             /// <summary> when order was uploaded, if at all </summary>
-            DateTime? CreatedUtc { get; set; }
+            public DateTime? CreatedUtc { get; set; }
             /// <summary> code of any status </summary>
-            int? Status { get; set; }
+            public int? Status { get; set; }
         }
 
         /// <summary>
@@ -130,7 +137,7 @@ namespace DentalManagerPlugin
         /// <summary>
         /// for <see cref="ResultData.Status"/>
         /// </summary>
-        public static bool StatusIsForward(int st) => st == 20 || st == 21 || st == 22 || st == 29;
+        public static bool StatusIsForward(int st) => st == 20 || st == 21 || st == 22 || st == 30 || st == 31 || st == 32;
 
 
         /// <summary>
@@ -152,12 +159,12 @@ namespace DentalManagerPlugin
 
 
         /// <summary>
-        /// throws on failure. does not catch
+        /// returns whether success. does not catch
         /// </summary>
         /// <param name="email">identifies user/customer</param>
         /// <param name="password">user's/customer's secret</param>
         /// <param name="remember">whether to store authentication as persistent cookie</param>
-        public async Task Login(string email, string password, bool remember)
+        public async Task<bool> Login(string email, string password, bool remember)
         {
             var postData = new FormUrlEncodedContent(
                 new List<KeyValuePair<string, string>>
@@ -172,11 +179,13 @@ namespace DentalManagerPlugin
 
             var response = await _httpClient.PostAsync("Home/LoginApi", postData);
             if (!response.IsSuccessStatusCode)
-                throw new Exception($"Cannot request login [Error code {response.StatusCode}]");
+                return false;
 
             // we have a user claim now, so must refresh token
             // https://www.blinkingcaret.com/2018/11/29/asp-net-core-web-api-antiforgery/
             await RefreshAntiforgeryToken();
+
+            return true;
         }
 
         /// <summary>
@@ -189,36 +198,29 @@ namespace DentalManagerPlugin
         }
 
         /// <summary>
-        /// get status of order as identified by name
+        /// get status of order as identified by name. no try/catch.
         /// </summary>
         /// <param name="orderName">order name</param>
         /// <returns>a list of result data, status and created time for each. There can be multiple if the order has been uploaded
-        /// multiple times. The list can also be empty if there are no such orders. Null is returned on any error.</returns>
+        /// multiple times. The list can also be empty if there are no such orders.</returns>
         public async Task<List<ResultData>> GetStatus(string orderName)
         {
-            try
-            {
-                var postData = new FormUrlEncodedContent(
-                    new List<KeyValuePair<string, string>>
-                    {
-                        new KeyValuePair<string, string>("orderName", orderName),
-                    });
+            var postData = new FormUrlEncodedContent(
+               new List<KeyValuePair<string, string>>
+               {
+                    new KeyValuePair<string, string>("orderName", orderName),
+               });
 
-                var response = await _httpClient.PostAsync("api/Results/ForOrder", postData);
-                if (!response.IsSuccessStatusCode)
-                    return null;
+            var response = await _httpClient.PostAsync("api/Results/ForOrder", postData);
+            if (!response.IsSuccessStatusCode)
+                throw new Exception($"Could not get status for order [Error code {response.StatusCode}]");
 
-                if (response.StatusCode == HttpStatusCode.NoContent)
-                    return new List<ResultData>();
+            if (response.StatusCode == HttpStatusCode.NoContent)
+                return new List<ResultData>();
 
-                var sResp = await response.Content.ReadAsStringAsync();
-                var resultDatas = JsonConvert.DeserializeObject<List<ResultData>>(sResp);
-                return resultDatas;
-            }
-            catch (Exception e)
-            {
-                return null;
-            }
+            var sResp = await response.Content.ReadAsStringAsync();
+            var resultDatas = JsonConvert.DeserializeObject<List<ResultData>>(sResp);
+            return resultDatas;
         }
 
         /// <summary>
@@ -244,19 +246,13 @@ namespace DentalManagerPlugin
             }
         }
 
-        public async Task<string> Upload(string orderFilename, MemoryStream zipStream)
+        public async Task Upload(string orderFilename, MemoryStream zipStream, CancellationToken cancelToken)
         {
-            try
-            {
-                var streamContent = new StreamContent(zipStream);
-                var formContent = new MultipartFormDataContent { { streamContent, "file", orderFilename } };
-                var response = await _httpClient.PostAsync("api/Streaming/Upload/", formContent);
-                return !response.IsSuccessStatusCode ? $"Could not upload order [Error code {response.StatusCode}]" : "";
-            }
-            catch (Exception e)
-            {
-                return e.Message;
-            }
+            var streamContent = new StreamContent(zipStream);
+            var formContent = new MultipartFormDataContent { { streamContent, "file", orderFilename } };
+            var response = await _httpClient.PostAsync("api/Streaming/Upload/", formContent, cancelToken);
+            if (!response.IsSuccessStatusCode)
+                throw new Exception($"Could not upload order [Error code {response.StatusCode}]");
         }
 
         public void Dispose()

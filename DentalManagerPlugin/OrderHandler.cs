@@ -16,6 +16,7 @@ namespace DentalManagerPlugin
 
         private readonly DirectoryInfo _orderDirectoryInfo;
         private readonly FileInfo _orderFileInfo;
+        private string _orderText;
 
         private OrderHandler()
         {
@@ -65,12 +66,26 @@ namespace DentalManagerPlugin
             return false;
         }
 
+
         /// <summary>
         /// get the contents of the order xml file as string
         /// </summary>
         /// <returns></returns>
-        public string GetOrderText() => File.ReadAllText(_orderFileInfo.FullName);
+        public string GetOrderText()
+        {
+            if (string.IsNullOrEmpty(_orderText))
+                _orderText = File.ReadAllText(_orderFileInfo.FullName);
+            return _orderText;
+        }
 
+        public bool IsScannedStatus()
+        {
+            if (string.IsNullOrEmpty(_orderText))
+                _orderText = File.ReadAllText(_orderFileInfo.FullName);
+            //TODO parse xml
+            return false;
+
+        }
 
         /// <summary>
         /// pack all relevant order files in a zip archive, as stream. Is set to Position 0. Caller must dispose.

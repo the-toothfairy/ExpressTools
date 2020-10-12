@@ -6,53 +6,70 @@
         xmlns:local="clr-namespace:DentalManagerPlugin"
         mc:Ignorable="d"
         Width="550" FontSize="12" SizeToContent="Height" Loaded="Window_Loaded" Closing="Window_Closing" WindowStyle="ToolWindow" >
-    <Grid>
+    <Grid Margin="5">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"></RowDefinition>
             <RowDefinition Height="Auto"></RowDefinition>
             <RowDefinition Height="Auto"></RowDefinition>
             <RowDefinition Height="Auto"></RowDefinition>
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0" Margin="5" Name="GridPw">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"></ColumnDefinition>
-                <ColumnDefinition Width="Auto"></ColumnDefinition>
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
+        <Grid Grid.Row="0" Name="GridBatchUpload" Margin="5,0,0,0">
+            <Grid.RowDefinitions >
+                <RowDefinition Height="Auto"></RowDefinition>
                 <RowDefinition Height="Auto"></RowDefinition>
                 <RowDefinition Height="Auto"></RowDefinition>
                 <RowDefinition Height="Auto"></RowDefinition>
             </Grid.RowDefinitions>
-            <Label Grid.Row="0" Grid.Column="0" Margin="0,5,5,5">Login:</Label>
-            <StackPanel  Grid.Row="0" Grid.Column="1"  Orientation="Horizontal">
-                <TextBox Name="TextLogin" Margin="5,5,15,5" Width="300" VerticalContentAlignment="Center"></TextBox>
-                <CheckBox Name="CheckRemember" VerticalAlignment="Center" IsChecked="True">Remember me</CheckBox>
+            <Label VerticalAlignment="Center" Grid.Row="0" Margin="0,5,0,5" FontWeight="Bold">Batch upload</Label>
+            <Grid Grid.Row="1" Margin="0,5,0,5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"></ColumnDefinition>
+                    <ColumnDefinition Width="*"></ColumnDefinition>
+                    <ColumnDefinition Width="Auto"></ColumnDefinition>
+                </Grid.ColumnDefinitions>
+                <Label VerticalAlignment="Center" Grid.Column="0" VerticalContentAlignment="Center">3Shape order directory:</Label>
+                <TextBox VerticalAlignment="Center" Margin="5,0,5,0" Height="25" Grid.Column="1" VerticalContentAlignment="Center">c:\3shape</TextBox>
+                <Button VerticalAlignment="Center" Height="25" Width="40" Grid.Column="2" HorizontalAlignment="Right">...</Button>
+            </Grid>
+            <StackPanel Grid.Row="2" Orientation="Horizontal">
+                <Label VerticalAlignment="Center" Margin="0,5,0,5" VerticalContentAlignment="Center">Upload all new qualifying orders scanned within the last:</Label>
+                <TextBox VerticalAlignment="Center" Width="40" HorizontalContentAlignment="Right" VerticalContentAlignment="Center" Height="25" Margin="5,0,0,0">24</TextBox>
+                <Label VerticalAlignment="Center" Margin="0,5,0,5">hours</Label>
             </StackPanel>
-            <Label Grid.Row="1" Grid.Column="0" Margin="0,0,5,5">Password:</Label>
-            <PasswordBox Grid.Row="1" Grid.Column="1" Name="Pw" Margin="5,0,5,5" Width="300" VerticalContentAlignment="Center" HorizontalAlignment="Left"></PasswordBox>
-            <Button Grid.Row="2" Grid.Column="1" Name="ButtonLogin" Width="80" Height="25" Margin="5,0,5,5" Click="ButtonLogin_OnClick" HorizontalAlignment="Left">Login</Button>
+            <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,15,0,5" HorizontalAlignment="Right">
+                <Button VerticalAlignment="Center" Height="25" Width="80" Margin="0,0,10,0">Start</Button>
+                <Button VerticalAlignment="Center" Height="25" Width="80" Margin="0,0,10,0">Cancel</Button>
+                <Button Height="25" Width="80" Margin="0,0,10,0"  HorizontalAlignment="Right" Click="ButtonLogout_Click"
+                    ToolTip="You need not log out, but if you do, you or another user on this PC will be prompted to log in the next time.">
+                    Logout
+                </Button>
+
+            </StackPanel>
         </Grid>
 
         <Grid Grid.Row="1">
-            <Grid.RowDefinitions>
+            <Grid.RowDefinitions >
+                <RowDefinition Height="Auto"></RowDefinition>
                 <RowDefinition Height="Auto"></RowDefinition>
             </Grid.RowDefinitions>
-            <StackPanel  Grid.Row="0" Orientation="Horizontal">
-                <Label Margin="5,0,5,0">Order:</Label>
-                <Label Name="LabelOrder" HorizontalAlignment="Stretch"></Label>
+            <StackPanel Grid.Row="0" Margin="0,5,0,5" Orientation="Horizontal">
+                <Label>Order:</Label>
+                <Label Margin="5,0,0,0" Name="LabelOrder" HorizontalAlignment="Stretch"></Label>
             </StackPanel>
+            <TextBox BorderThickness="0" Grid.Row="1" Name="TextStatus" Margin="5" TextWrapping="Wrap" Height="auto" MinHeight="35" >
+            </TextBox>
         </Grid>
 
-        <TextBox BorderThickness="0" Grid.Row="2" Name="TextStatus" Margin="5" TextWrapping="Wrap" Height="auto" MinHeight="30" >
-        </TextBox>
-
-        <Grid Name="GridLogout" Grid.Row="3">
-            <Button Height="25" Width="80" Margin="5" HorizontalAlignment="Right" Click="ButtonLogout_OnClick"
+        <StackPanel Grid.Row="2" Name="PanelFromDentalManager" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,5" >
+            <CheckBox VerticalContentAlignment="Center" Name="CheckboxAutoUpload" Margin="0,0,10,0">Automatically upload elligible orders</CheckBox>
+            <Button Height="25" Width="80" Margin="0,0,20,0"  HorizontalAlignment="Right" Name="ButtonUpload" Click="ButtonUpload_Click">Upload</Button>
+            <Button Height="25" Width="80" Margin="0,0,10,0"  HorizontalAlignment="Right" Name="ButtonLogoutDentalManager" Click="ButtonLogout_Click"
                     ToolTip="You need not log out, but if you do, you or another user on this PC will be prompted to log in the next time.">
                 Logout
             </Button>
-         </Grid>
+        </StackPanel>
+
+
 
     </Grid>
 </Window>
