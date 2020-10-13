@@ -22,6 +22,7 @@ namespace DentalManagerPlugin
 
         public bool LoginSuccessful { get; private set; }
 
+
         public LoginWindow(IdSettings idSettings, ExpressClient expressClient)
         {
             InitializeComponent();

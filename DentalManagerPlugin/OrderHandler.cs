@@ -1,6 +1,8 @@
 ﻿using System;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
+using System.Xml.Linq;
 
 namespace DentalManagerPlugin
 {
@@ -23,19 +25,22 @@ namespace DentalManagerPlugin
             // not allowed
         }
 
-        /// <summary>
-        /// construct
-        /// </summary>
-        /// <param name="orderDirectory">directory containing the order</param>
-        public OrderHandler(string orderDirectory)
+        private OrderHandler(DirectoryInfo di, FileInfo fi)
         {
-            _orderDirectoryInfo = new DirectoryInfo(orderDirectory);
-            if ( !_orderDirectoryInfo.Exists)
-                throw new Exception($"Order directory '{orderDirectory}' does not exist");
+            _orderDirectoryInfo = di;
+            _orderFileInfo = fi;
+        }
 
-            _orderFileInfo = new FileInfo(Path.Combine(_orderDirectoryInfo.FullName, OrderId + ".xml"));
-            if (!_orderFileInfo.Exists)
-                throw new Exception("No order in order directory");
+        public static OrderHandler MakeIfValid(DirectoryInfo orderDirInfo)
+        {
+            if (orderDirInfo == null || !orderDirInfo.Exists)
+                return null;
+
+            var orderFileInfo = new FileInfo(Path.Combine(orderDirInfo.FullName, orderDirInfo.Name + ".xml"));
+            if (!orderFileInfo.Exists)
+                return null;
+
+            return new OrderHandler(orderDirInfo, orderFileInfo);
         }
 
         private static bool IsRequiredNonOrder(string fullPath)
@@ -82,9 +87,27 @@ namespace DentalManagerPlugin
         {
             if (string.IsNullOrEmpty(_orderText))
                 _orderText = File.ReadAllText(_orderFileInfo.FullName);
-            //TODO parse xml
-            return false;
 
+            try
+            {
+                XDocument doc;
+                using (TextReader sr = new StringReader(_orderText))
+                    doc = XDocument.Load(sr);
+
+                // find the first type = TDM_Item_ModelElement node
+                if (!(doc.Root?.Descendants().FirstOrDefault(n => n.Attribute("type")?.Value == "TDM_Item_ModelElement")
+                    is XElement meItem))
+                    return false;
+
+                if (!(meItem.Descendants().FirstOrDefault(n => n.Attribute("name")?.Value == "ProcessStatusID") is XElement manId))
+                    return false;
+
+                return manId.Attribute("value")?.Value == "psScanned";
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         /// <summary>

@@ -11,60 +11,28 @@ using System.Windows.Media;
 namespace DentalManagerPlugin
 {
     /// <summary>
-    /// Interaction logic for MainWindow.xaml
+    /// Interaction logic
     /// </summary>
-    public partial class MainWindow : Window
+    public partial class PluginWindow : Window
     {
         private ExpressClient _expressClient;
         private OrderHandler _orderHandler;
         private IdSettings _idSettings;
 
-        private CancellationTokenSource _uploadCancelTokenSource;
-
         /// <summary>
         /// must be set before showing
         /// </summary>
-        public string OrderDir { get; set; }
-
-        /// <summary>
-        /// called from DentalManager (with order argument). If not, called as standalone, allowing batch upload
-        /// </summary>
-        private bool FromDentalManager => !string.IsNullOrEmpty(OrderDir);
-
-        #region information to user
-
-        /// <summary>
-        /// "quality" of message in errors, for log, etc
-        /// </summary>
-        /// <remarks>must be sorted by severity!</remarks>
-        public enum Severities
-        {
-            Info = 0,
-            Good,
-            Warning,
-            Error,
-        }
-
-        private readonly Dictionary<Severities, Color> _messageColors = new Dictionary<Severities, Color>
-        {
-            { Severities.Info, Colors.Black },
-            { Severities.Good, Colors.Green },
-            { Severities.Warning, Colors.DarkOrange },
-            { Severities.Error, Colors.Red },
-        };
+        private readonly string _orderDir;
 
         /// <summary>
         /// display a message in color. show option to log out if "remember me" and error
         /// </summary>
-        private void ShowMessage(string msg, Severities severity)
+        private void ShowMessage(string msg, Visual.Severities severity)
         {
             Dispatcher.Invoke(() =>
             {
                 TextStatus.Text = msg;
-                TextStatus.Foreground = new SolidColorBrush(_messageColors[severity]);
-
-                if (severity == Severities.Error && _expressClient != null && _idSettings.AuthCookie != null)
-                    PanelFromDentalManager.Visibility = Visibility.Visible;
+                TextStatus.Foreground = new SolidColorBrush(Visual.MessageColors[severity]);
             });
         }
 
@@ -80,12 +48,12 @@ namespace DentalManagerPlugin
             Dispatcher.Invoke(() => { this.Title = t; });
         }
 
-        #endregion
 
-
-        public MainWindow()
+        public PluginWindow(string orderDir)
         {
             InitializeComponent();
+
+            _orderDir = orderDir;
         }
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -98,30 +66,25 @@ namespace DentalManagerPlugin
 
                 _idSettings = IdSettings.ReadOrNew();
 
-                if (FromDentalManager)
+                var di = new System.IO.DirectoryInfo(_orderDir);
+                var orderHandler = OrderHandler.MakeIfValid(di);
+                if ( orderHandler == null )
                 {
-                    this.GridBatchUpload.Visibility = Visibility.Collapsed;
-                    _orderHandler = new OrderHandler(OrderDir);
-                    LabelOrder.Content = _orderHandler.OrderId;
-                    this.CheckboxAutoUpload.IsChecked = _idSettings.AutoUpload;
-                    RefresAutoUploadDependentControls();
-                    // now that checkbox is set, wire up events
-                    this.CheckboxAutoUpload.Checked += CheckboxAutoUpload_CheckedChanged;
-                    this.CheckboxAutoUpload.Unchecked += CheckboxAutoUpload_CheckedChanged;
-                }
-                else
-                {
-                    this.PanelFromDentalManager.Visibility = Visibility.Collapsed;
+                    ShowMessage($"{di.FullName} is not a valid order directory", Visual.Severities.Error);
+                    ButtonUpload.IsEnabled = false;
+                    CheckboxAutoUpload.IsEnabled = false;
+                    return;
                 }
 
-                var uri = IdSettings.ReadAnyAssociatedUri(); // allow change
-                if (uri == null)
-                {
-                    uri = new Uri("https://express.fullcontour.com/");
-#if DEBUG
-                    uri = new Uri("https://localhost:44334/");
-#endif
-                }
+                _orderHandler = orderHandler;
+                LabelOrder.Content = _orderHandler.OrderId;
+                this.CheckboxAutoUpload.IsChecked = _idSettings.AutoUpload;
+                RefresAutoUploadDependentControls();
+                // now that checkbox is set, wire up events
+                this.CheckboxAutoUpload.Checked += CheckboxAutoUpload_CheckedChanged;
+                this.CheckboxAutoUpload.Unchecked += CheckboxAutoUpload_CheckedChanged;
+
+                var uri = IdSettings.GetUri();
 
                 _expressClient = new ExpressClient(uri);
 
@@ -137,8 +100,7 @@ namespace DentalManagerPlugin
                         if (loginWindow.LoginSuccessful)
                         {
                             RefreshLoginDependentControls(true);
-                            if (FromDentalManager)
-                                await HandleDentalManagerOrder(); // status, qualifiy, possibly upload
+                            await HandleSingleOrder(); // status, qualifiy, possibly upload
                         }
                         else
                         {
@@ -152,13 +114,13 @@ namespace DentalManagerPlugin
                 else
                 {
                     RefreshLoginDependentControls(true);
+                    await HandleSingleOrder(); // status, qualifiy, possibly upload
                 }
             }
             catch (Exception exception)
             {
-                ShowMessage(exception.Message, Severities.Error);
-                GridBatchUpload.IsEnabled = false;
-                ButtonUpload.IsEnabled = false;
+                ShowMessage(exception.Message, Visual.Severities.Error);
+                RefreshLoginDependentControls(false);
                 return;
             }
         }
@@ -167,7 +129,6 @@ namespace DentalManagerPlugin
         {
             ShowLoginInTitle(loggedIn ? _idSettings.UserLogin : "");
             // all of batch part in one go
-            GridBatchUpload.IsEnabled = loggedIn; // may not be visible
             // parts of from-DentalManager
             ButtonUpload.IsEnabled = loggedIn; // may not be visible
             ButtonLogoutDentalManager.IsEnabled = loggedIn;
@@ -180,7 +141,7 @@ namespace DentalManagerPlugin
         /// <summary>
         /// check status, qualify, possibly upload. no try/catch
         /// </summary>
-        private async Task HandleDentalManagerOrder()
+        private async Task HandleSingleOrder()
         {
             // no upload while checking other things, and it may not be allowed later, either
             this.ButtonUpload.IsEnabled = false;
@@ -189,44 +150,44 @@ namespace DentalManagerPlugin
 
             if (resultData.Count > 1)
             {
-                ShowMessage("This order has been uploaded multiple times. For details, please go to the web site.", Severities.Info);
+                ShowMessage("This order has been uploaded multiple times. For details, please go to the web site.", Visual.Severities.Info);
                 return;
             }
 
             if (resultData.Count == 1) // order alread uploaded exactly once, can get status
             {
                 if (!resultData[0].Status.HasValue)
-                    ShowMessage("No status information for this order. Please go to the web site.", Severities.Warning);
+                    ShowMessage("No status information for this order. Please go to the web site.", Visual.Severities.Warning);
 
                 var st = resultData[0].Status.Value;
 
                 if (ExpressClient.StatusIsReadyForReview(st))
-                    ShowMessage("Design is ready for review on the web site.", Severities.Good); // TODO add view button
+                    ShowMessage("Design is ready for review on the web site.", Visual.Severities.Good); // TODO add view button
 
                 else if (ExpressClient.StatusIsAcceptedDownloaded(st))
-                    ShowMessage("Design was accepted and downloaded.", Severities.Info);
+                    ShowMessage("Design was accepted and downloaded.", Visual.Severities.Info);
 
                 else if (ExpressClient.StatusIsRejected(st))
-                    ShowMessage("Design was rejected.", Severities.Info);
+                    ShowMessage("Design was rejected.", Visual.Severities.Info);
 
                 else if (ExpressClient.StatusIsInProgress(st))
-                    ShowMessage("Design is in progress.", Severities.Info);
+                    ShowMessage("Design is in progress.", Visual.Severities.Info);
 
                 else if (ExpressClient.StatusIsFailure(st))
-                    ShowMessage("Design failed. See details on the web site.", Severities.Warning);
+                    ShowMessage("Design failed. See details on the web site.", Visual.Severities.Warning);
 
                 else
-                    ShowMessage("Unknown status information for this order. Please go to the web site.", Severities.Warning);
+                    ShowMessage("Unknown status information for this order. Please go to the web site.", Visual.Severities.Warning);
 
                 return;
             }
 
-            ShowMessage("Order is new", Severities.Info);
+            ShowMessage("Order is new.", Visual.Severities.Info);
 
             var msg = await _expressClient.Qualify(_orderHandler.GetOrderText());
             if (!string.IsNullOrEmpty(msg))
             {
-                ShowMessage(msg, Severities.Warning);
+                ShowMessage(msg, Visual.Severities.Warning);
                 return;
             }
 
@@ -238,39 +199,26 @@ namespace DentalManagerPlugin
 
         private async Task UploadOrder(bool closeAfterUpload)
         {
-            ShowMessage("Uploading...", Severities.Info);
+            ShowMessage("Uploading...", Visual.Severities.Info);
 
             try
             {
-                _uploadCancelTokenSource = new CancellationTokenSource();
-                var token = _uploadCancelTokenSource.Token;
-
                 using (var ms = _orderHandler.ZipOrderFiles())
-                    await _expressClient.Upload(_orderHandler.OrderId + ".zip", ms, token);
-            }
-            catch (OperationCanceledException)
-            {
-                ShowMessage("Upload cancelled", Severities.Warning);
-                return;
+                    await _expressClient.Upload(_orderHandler.OrderId + ".zip", ms, CancellationToken.None);
             }
             catch (Exception ex)
             {
-                ShowMessage(ex.Message, Severities.Error);
+                ShowMessage(ex.Message, Visual.Severities.Error);
                 return;
-            }
-            finally
-            {
-                _uploadCancelTokenSource?.Dispose();
-                _uploadCancelTokenSource = null;
             }
 
             if (!closeAfterUpload)
             {
-                ShowMessage("Sent for design.", Severities.Good);
+                ShowMessage("Sent for design.", Visual.Severities.Good);
                 return;
             }
 
-            ShowMessage("Sent for design. Closing this window soon...", Severities.Good);
+            ShowMessage("Sent for design. Closing this window soon...", Visual.Severities.Good);
             try
             {
                 await Task.Delay(3000);
@@ -289,7 +237,6 @@ namespace DentalManagerPlugin
         {
             try
             {
-                _uploadCancelTokenSource?.Cancel();
                 _expressClient?.Dispose();
             }
             catch (Exception)
@@ -316,20 +263,27 @@ namespace DentalManagerPlugin
                     return; // should not happen, but to be save
 
                 await _expressClient.Logout();
-                ShowMessage("You are logged out", Severities.Info);
+                ShowMessage("You are logged out", Visual.Severities.Info);
                 RefreshLoginDependentControls(false);
             }
             catch (Exception)
             {
-                ShowMessage("Error during log out", Severities.Error);
+                ShowMessage("Error during log out", Visual.Severities.Error);
             }
         }
 
         private void CheckboxAutoUpload_CheckedChanged(object sender, RoutedEventArgs e)
         {
-            _idSettings.AutoUpload = CheckboxAutoUpload.IsChecked == true;
-            IdSettings.Write(_idSettings);
-            RefresAutoUploadDependentControls();
+            try
+            {
+                _idSettings.AutoUpload = CheckboxAutoUpload.IsChecked == true;
+                IdSettings.Write(_idSettings);
+                RefresAutoUploadDependentControls();
+            }
+            catch (Exception ex)
+            {
+                ShowMessage("Error: " + ex.Message, Visual.Severities.Error);
+            }
         }
 
         /// <summary>
@@ -343,7 +297,7 @@ namespace DentalManagerPlugin
             }
             catch (Exception ex)
             {
-                ShowMessage("Error during upload: " + ex.Message, Severities.Error);
+                ShowMessage("Error during upload: " + ex.Message, Visual.Severities.Error);
             }
         }
     }

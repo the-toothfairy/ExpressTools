@@ -9,8 +9,6 @@ namespace DentalManagerPlugin
     {
         private void Application_Startup(object sender, StartupEventArgs e)
         {
-            var wnd = new MainWindow();
-
             if (e.Args.Length == 1)
             {
                 // DentalManager adds quote at end only, remove it
@@ -18,10 +16,14 @@ namespace DentalManagerPlugin
                 if (dir.EndsWith("\"") && !dir.StartsWith("\""))
                     dir = dir.Substring(0, dir.Length - 1);
 
-                wnd.OrderDir = dir;
+                var wnd = new PluginWindow(dir);
+                wnd.Show();
             }
-
-            wnd.Show();
+            else
+            {
+                var wnd = new BatchWindow();
+                wnd.Show();
+            }
         }
     }
 }

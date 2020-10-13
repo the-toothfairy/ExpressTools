@@ -30,6 +30,8 @@ namespace DentalManagerPlugin
 
         public bool AutoUpload { get; set; }
 
+        public string OrderDirectory { get; set; }
+
 
         private static string AppDataDir =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ExpressDmPlugin");
@@ -86,7 +88,7 @@ namespace DentalManagerPlugin
         /// for development, or in case of emergency, allow reading a different url from unprotected, separate file (so user can change).
         /// Null if nothing (valid) found. Format: 'https://express.fullcontour.com'. File name: <see cref="UrlFileFullPath"/>
         /// </summary>
-        public static Uri ReadAnyAssociatedUri()
+        private static Uri ReadAnyAssociatedUri()
         {
             if (!Directory.Exists(AppDataDir) || !File.Exists(UrlFileFullPath))
                 return null;
@@ -97,5 +99,20 @@ namespace DentalManagerPlugin
             return Uri.TryCreate(s, UriKind.Absolute, out var res) ? res : null;
         }
 
+        /// <summary>
+        /// return effective URI
+        /// </summary>
+        public static Uri GetUri()
+        {
+            var uri = ReadAnyAssociatedUri(); // allow change
+            if (uri == null)
+            {
+                uri = new Uri("https://express.fullcontour.com/");
+#if DEBUG
+                uri = new Uri("https://localhost:44334/");
+#endif
+            }
+            return uri;
+        }
     }
 }

@@ -1,0 +1,41 @@
+﻿<Window x:Class="DentalManagerPlugin.PluginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:DentalManagerPlugin"
+        mc:Ignorable="d"
+        Width="550" FontSize="12" SizeToContent="Height" Loaded="Window_Loaded" Closing="Window_Closing" WindowStyle="ToolWindow" >
+    <Grid Margin="5">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"></RowDefinition>
+            <RowDefinition Height="*"></RowDefinition>
+            <RowDefinition Height="Auto"></RowDefinition>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,5,0,5" Orientation="Horizontal">
+            <Label>Order:</Label>
+            <Label Margin="5,0,0,0" Name="LabelOrder" HorizontalAlignment="Stretch"></Label>
+        </StackPanel>
+
+        <TextBox BorderThickness="0" Grid.Row="1" Name="TextStatus" Margin="5" TextWrapping="Wrap" VerticalAlignment="Stretch"
+                 HorizontalAlignment="Stretch" MinHeight="35" >
+        </TextBox>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0" Height="18" VerticalContentAlignment="Top" FontSize="10" Width="60" Margin="0,15,0,5" HorizontalAlignment="Left" Name="ButtonLogoutDentalManager" Click="ButtonLogout_Click"
+                    ToolTip="You need not log out, but if you do, you or another user on this PC will be prompted to log in the next time.">
+                Logout
+            </Button>
+            <StackPanel Grid.Column="1" Name="PanelFromDentalManager" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,5" >
+                <CheckBox VerticalContentAlignment="Center" Name="CheckboxAutoUpload" Margin="0,0,10,0">Automatically upload elligible orders</CheckBox>
+                <Button Height="25" Width="80" Margin="0,0,20,0"  HorizontalAlignment="Right" Name="ButtonUpload" Click="ButtonUpload_Click">Upload</Button>
+            </StackPanel>
+        </Grid>
+
+    </Grid>
+</Window>

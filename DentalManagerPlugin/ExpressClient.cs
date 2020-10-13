@@ -61,7 +61,7 @@ namespace DentalManagerPlugin
                     return false;
 
                 //  Not if too little time left.
-                if (storedCookie.Expires > DateTime.UtcNow.AddMinutes(-15))
+                if (storedCookie.Expires < DateTime.UtcNow.AddMinutes(-15))
                     return false;
 
                 _httpClientHandler.CookieContainer.Add(_httpClient.BaseAddress, storedCookie); // will replace any existing one
