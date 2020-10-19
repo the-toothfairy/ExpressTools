@@ -22,6 +22,8 @@ namespace DentalManagerPlugin
 
         public bool LoginSuccessful { get; private set; }
 
+        public bool LoginRemembered { get; private set; }
+
 
         public LoginWindow(IdSettings idSettings, ExpressClient expressClient)
         {
@@ -29,6 +31,8 @@ namespace DentalManagerPlugin
 
             _expressClient = expressClient;
             _idSettings = idSettings;
+
+            this.Title += $"Login required for {_expressClient.UriString}";
         }
 
         /// <summary>
@@ -37,6 +41,7 @@ namespace DentalManagerPlugin
         private async void ButtonLogin_Click(object sender, RoutedEventArgs e)
         {
             LoginSuccessful = false;
+            LoginRemembered = false;
             LabelErrorMessage.Content = "";
             var origCursor = Cursor;
             try
@@ -55,6 +60,7 @@ namespace DentalManagerPlugin
                     {
                         _idSettings.AuthCookie = _expressClient.AuthCookie;
                         _idSettings.UserLogin = TextLogin.Text;
+                        LoginRemembered = true;
                     }
                     else
                     {

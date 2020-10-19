@@ -5,9 +5,9 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:DentalManagerPlugin"
         mc:Ignorable="d"
-        Title="Login Required" FontSize="12" SizeToContent="Height" Height="130" Width="550" WindowStyle="ToolWindow"
+        FontSize="12" SizeToContent="Height" Height="130" Width="550" WindowStyle="ToolWindow"
         WindowStartupLocation="CenterOwner" Loaded="Window_Loaded">
-    <Grid>
+    <Grid  Background="#f8f8f8">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto"></ColumnDefinition>
             <ColumnDefinition Width="Auto"></ColumnDefinition>

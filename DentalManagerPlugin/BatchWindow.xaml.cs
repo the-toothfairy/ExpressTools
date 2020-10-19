@@ -16,6 +16,8 @@ using System.Threading.Tasks;
 using System.Linq;
 
 using MessageBox = System.Windows.MessageBox;
+using Cursor = System.Windows.Input.Cursor;
+using Cursors = System.Windows.Input.Cursors;
 
 namespace DentalManagerPlugin
 {
@@ -42,7 +44,7 @@ namespace DentalManagerPlugin
             Dispatcher?.Invoke(() =>
             {
                 var color = Visual.MessageColors[severity];
-                var run = new Run(text) { Foreground = new SolidColorBrush(color) };
+                var run = new Run("\n" + text) { Foreground = new SolidColorBrush(color) };
                 Par.Inlines.Add(run);
             });
         }
@@ -59,12 +61,12 @@ namespace DentalManagerPlugin
             Dispatcher.Invoke(() => { this.Title = t; });
         }
 
-        private void RefreshLoginDependentControls(bool loggedIn)
+        private void RefreshLoginDependentControls(bool loggedIn, bool remembered)
         {
             ShowLoginInTitle(loggedIn ? _idSettings.UserLogin : "");
             ButtonStart.IsEnabled = loggedIn;
             ButtonCancel.IsEnabled = loggedIn;
-            ButtonLogout.IsEnabled = loggedIn;
+            ButtonLogout.Visibility = loggedIn && remembered ? Visibility.Visible : Visibility.Hidden;
         }
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -90,7 +92,7 @@ namespace DentalManagerPlugin
 
                     loginWindow.Closed += (s, args) =>
                     {
-                        RefreshLoginDependentControls(loginWindow.LoginSuccessful);
+                        RefreshLoginDependentControls(loginWindow.LoginSuccessful, loginWindow.LoginRemembered);
                     };
 
                     loginWindow.Owner = this;
@@ -98,13 +100,13 @@ namespace DentalManagerPlugin
                 }
                 else
                 {
-                    RefreshLoginDependentControls(true);
+                    RefreshLoginDependentControls(true, true);
                 }
             }
             catch (Exception exception)
             {
                 AddText(exception.Message, Visual.Severities.Error);
-                RefreshLoginDependentControls(false);
+                RefreshLoginDependentControls(false, false);
                 return;
             }
         }
@@ -124,7 +126,7 @@ namespace DentalManagerPlugin
 
                 await _expressClient.Logout();
                 AddText("You are logged out", Visual.Severities.Info);
-                RefreshLoginDependentControls(false);
+                RefreshLoginDependentControls(false, false);
             }
             catch (Exception)
             {
@@ -153,10 +155,14 @@ namespace DentalManagerPlugin
             }
         }
 
-        private void ButtonStart_Click(object sender, RoutedEventArgs e)
+        private async void ButtonStart_Click(object sender, RoutedEventArgs e)
         {
+            var origCursor = Cursor;
+
             try
             {
+                Par.Inlines.Clear();
+
                 var orderBaseDi = new DirectoryInfo(_idSettings.OrderDirectory);
                 if (!orderBaseDi.Exists)
                 {
@@ -170,29 +176,54 @@ namespace DentalManagerPlugin
                 _cancellationTokenSource = new CancellationTokenSource();
                 var token = _cancellationTokenSource.Token;
 
-                Task.Run(() => RunAll(subDirs, token), token);
+                var bDouble = double.TryParse(TextLastHours.Text, out var hours);
+                if ( !bDouble )
+                {
+                    AddText("Invalid input for hours (wrong decimal separator?)", Visual.Severities.Error);
+                    return;
+                }
+
+                var cutOff = DateTime.UtcNow.AddHours(-hours);
+                Cursor = Cursors.Wait;
+
+                int nUp = await RunAll(subDirs, cutOff, token);
+
+                AddText($"\n{nUp} orders uploaded.", Visual.Severities.Info);
             }
             catch (Exception exception)
             {
                 if (exception is OperationCanceledException || exception is AggregateException ae
                         && ae.InnerExceptions.Any(ie => ie is OperationCanceledException))
-                     return; // should mostly be caught in task's try/catch
+                    return; // should mostly be caught in task's try/catch
 
                 AddText(exception.Message, Visual.Severities.Error);
             }
+
+            Cursor = origCursor;
         }
 
-        private async Task RunAll(DirectoryInfo[] orderDirs, CancellationToken token)
+        private async Task<int> RunAll(DirectoryInfo[] orderDirs, DateTime cutoffUtc, CancellationToken token)
         {
             var nUploads = 0;
 
             foreach (var orderDir in orderDirs)
             {
                 if (token.IsCancellationRequested)
-                    return;
+                {
+                    var stop = false;
+                    Dispatcher.Invoke(() =>
+                    {
+                        stop = (MessageBoxResult.Yes == MessageBox.Show("Are you sure you want to cancel?", "", MessageBoxButton.YesNo));
+                    });
+                    if (stop)
+                        break;
+                }
 
                 try
                 {
+                    if (orderDir.Name == "ManufacturingDir") // special directory
+                        continue;
+
                     var orderHandler = OrderHandler.MakeIfValid(orderDir);
                     if (orderHandler == null)
                     {
@@ -200,7 +231,11 @@ namespace DentalManagerPlugin
                         continue;
                     }
 
-                    if (!orderHandler.IsScannedStatus())
+                    orderHandler.GetStatusInfo(out var creationDateUtc, out var isScanned);
+                    if (creationDateUtc < cutoffUtc)
+                        continue; // no message, as there will often be many
+
+                    if (!isScanned)
                     {
                         AddText($"{orderDir.Name}: not in scanned state.", Visual.Severities.Info);
                         continue;
@@ -213,32 +248,23 @@ namespace DentalManagerPlugin
                         continue;
                     }
 
-                    using (var ms = orderHandler.ZipOrderFiles())
-                        await _expressClient.Upload(orderHandler.OrderId + ".zip", ms, token);
+                    //TODO REMOVE COMMENT
+                    // do not allow cancel within operation (would be complicated to handle)
+                    //using (var ms = orderHandler.ZipOrderFiles())
+                    //    await _expressClient.Upload(orderHandler.OrderId + ".zip", ms, CancellationToken.None);
 
                     AddText($"{orderDir.Name}: uploaded.", Visual.Severities.Good);
                     nUploads++;
                 }
-                catch (Exception exception)
+                catch (Exception)
                 {
-                    // any cancellation
-                    if (exception is OperationCanceledException || exception is AggregateException ae
-                                    && ae.InnerExceptions.Any(ie => ie is OperationCanceledException))
-                    {
-                        if (MessageBoxResult.No == MessageBox.Show("Are you sure you want to cancel?", "", MessageBoxButton.YesNo))
-                            continue;
-
-                        AddText("\n" + $"Cancelled. Uploaded {nUploads} orders.", Visual.Severities.Info);
-                        return;
-                    }
-
-                    // but do not stop loop just because one case failed
+                    // do not stop loop just because one case failed
                     AddText($"{orderDir.Name}: error.", Visual.Severities.Error);
                     continue;
                 }
             }
 
-            AddText("\n" + $"Done. Uploaded {nUploads} orders.", Visual.Severities.Good);
+            return nUploads;
         }
 
 
@@ -250,6 +276,10 @@ namespace DentalManagerPlugin
             }
             catch (Exception exception)
             {
+                if (exception is OperationCanceledException || exception is AggregateException ae
+                             && ae.InnerExceptions.Any(ie => ie is OperationCanceledException))
+                    throw;
+
                 AddText(exception.Message, Visual.Severities.Error);
             }
         }

@@ -83,8 +83,11 @@ namespace DentalManagerPlugin
             return _orderText;
         }
 
-        public bool IsScannedStatus()
+        public void GetStatusInfo(out DateTime creationDateUtc, out bool isScanned)
         {
+            creationDateUtc = DateTime.MinValue;
+            isScanned = false;
+
             if (string.IsNullOrEmpty(_orderText))
                 _orderText = File.ReadAllText(_orderFileInfo.FullName);
 
@@ -97,16 +100,24 @@ namespace DentalManagerPlugin
                 // find the first type = TDM_Item_ModelElement node
                 if (!(doc.Root?.Descendants().FirstOrDefault(n => n.Attribute("type")?.Value == "TDM_Item_ModelElement")
                     is XElement meItem))
-                    return false;
+                    return;
 
-                if (!(meItem.Descendants().FirstOrDefault(n => n.Attribute("name")?.Value == "ProcessStatusID") is XElement manId))
-                    return false;
+                if (!(meItem.Descendants().FirstOrDefault(n => n.Attribute("name")?.Value == "ProcessStatusID") is XElement manId)
+                    || !(meItem.Descendants().FirstOrDefault(n => n.Attribute("name")?.Value == "CreateDate") is XElement creaDate))
+                    return;
 
-                return manId.Attribute("value")?.Value == "psScanned";
+                var unixDate = creaDate.Attribute("value")?.Value;
+                if (unixDate == null || !double.TryParse(unixDate, out var unixTimeStamp))
+                    return;
+
+                isScanned = manId.Attribute("value")?.Value == "psScanned";
+
+                // Unix timestamp is seconds past epoch
+                var dtDateTime = new DateTime(1970, 1, 1, 0, 0, 0, 0, System.DateTimeKind.Utc);
+                creationDateUtc = dtDateTime.AddSeconds(unixTimeStamp);
             }
             catch (Exception)
-            {
-                return false;
+            { // nothing
             }
         }
 

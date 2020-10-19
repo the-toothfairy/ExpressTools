@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Diagnostics;
 
 namespace DentalManagerPlugin
 {
@@ -53,6 +54,7 @@ namespace DentalManagerPlugin
         {
             InitializeComponent();
 
+            ButtonInspect.Visibility = Visibility.Collapsed;
             _orderDir = orderDir;
         }
 
@@ -68,7 +70,7 @@ namespace DentalManagerPlugin
 
                 var di = new System.IO.DirectoryInfo(_orderDir);
                 var orderHandler = OrderHandler.MakeIfValid(di);
-                if ( orderHandler == null )
+                if (orderHandler == null)
                 {
                     ShowMessage($"{di.FullName} is not a valid order directory", Visual.Severities.Error);
                     ButtonUpload.IsEnabled = false;
@@ -99,12 +101,12 @@ namespace DentalManagerPlugin
                     {
                         if (loginWindow.LoginSuccessful)
                         {
-                            RefreshLoginDependentControls(true);
+                            RefreshLoginDependentControls(true, loginWindow.LoginRemembered);
                             await HandleSingleOrder(); // status, qualifiy, possibly upload
                         }
                         else
                         {
-                            RefreshLoginDependentControls(false);
+                            RefreshLoginDependentControls(false, false);
                         }
                     };
 
@@ -113,25 +115,25 @@ namespace DentalManagerPlugin
                 }
                 else
                 {
-                    RefreshLoginDependentControls(true);
+                    RefreshLoginDependentControls(true, true);
                     await HandleSingleOrder(); // status, qualifiy, possibly upload
                 }
             }
             catch (Exception exception)
             {
                 ShowMessage(exception.Message, Visual.Severities.Error);
-                RefreshLoginDependentControls(false);
+                RefreshLoginDependentControls(false, false);
                 return;
             }
         }
 
-        private void RefreshLoginDependentControls(bool loggedIn)
+        private void RefreshLoginDependentControls(bool loggedIn, bool remembered)
         {
             ShowLoginInTitle(loggedIn ? _idSettings.UserLogin : "");
             // all of batch part in one go
             // parts of from-DentalManager
             ButtonUpload.IsEnabled = loggedIn; // may not be visible
-            ButtonLogoutDentalManager.IsEnabled = loggedIn;
+            ButtonLogout.Visibility = loggedIn && remembered ? Visibility.Visible : Visibility.Hidden;
         }
 
         private void RefresAutoUploadDependentControls() => ButtonUpload.Visibility = CheckboxAutoUpload.IsChecked == true ?
@@ -145,6 +147,8 @@ namespace DentalManagerPlugin
         {
             // no upload while checking other things, and it may not be allowed later, either
             this.ButtonUpload.IsEnabled = false;
+            ButtonInspect.Visibility = Visibility.Collapsed;
+            ButtonInspect.Tag = null;
 
             var resultData = await _expressClient.GetStatus(_orderHandler.OrderId);
 
@@ -161,14 +165,23 @@ namespace DentalManagerPlugin
 
                 var st = resultData[0].Status.Value;
 
+                var reviewedLocal = "?";
+
+                if (resultData[0].ReviewedUtc.HasValue)
+                    reviewedLocal = resultData[0].ReviewedUtc.Value.ToLocalTime().ToString();
+
                 if (ExpressClient.StatusIsReadyForReview(st))
-                    ShowMessage("Design is ready for review on the web site.", Visual.Severities.Good); // TODO add view button
+                {
+                    ShowMessage("Design is ready for review on the web site.", Visual.Severities.Good);
+                    ButtonInspect.Visibility = Visibility.Visible;
+                    ButtonInspect.Tag = resultData[0].eid;
+                }
 
                 else if (ExpressClient.StatusIsAcceptedDownloaded(st))
-                    ShowMessage("Design was accepted and downloaded.", Visual.Severities.Info);
+                    ShowMessage($"Design was accepted and downloaded at {reviewedLocal}.", Visual.Severities.Info);
 
                 else if (ExpressClient.StatusIsRejected(st))
-                    ShowMessage("Design was rejected.", Visual.Severities.Info);
+                    ShowMessage($"Design was rejected at {reviewedLocal}.", Visual.Severities.Info);
 
                 else if (ExpressClient.StatusIsInProgress(st))
                     ShowMessage("Design is in progress.", Visual.Severities.Info);
@@ -264,7 +277,7 @@ namespace DentalManagerPlugin
 
                 await _expressClient.Logout();
                 ShowMessage("You are logged out", Visual.Severities.Info);
-                RefreshLoginDependentControls(false);
+                RefreshLoginDependentControls(false, false);
             }
             catch (Exception)
             {
@@ -298,6 +311,22 @@ namespace DentalManagerPlugin
             catch (Exception ex)
             {
                 ShowMessage("Error during upload: " + ex.Message, Visual.Severities.Error);
+            }
+        }
+
+        private void ButtonInspect_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (!(ButtonInspect.Tag is string eid))
+                    return;
+
+                var url = "https://" + _expressClient.UriString + "/Inspect/" + eid;
+                Process.Start(new ProcessStartInfo("cmd", $"/c start {url}") { CreateNoWindow = true });
+            }
+            catch (Exception ex)
+            {
+                ShowMessage("Error showing result: " + ex.Message, Visual.Severities.Error);
             }
         }
     }

@@ -20,13 +20,17 @@ namespace DentalManagerPlugin
 
         private readonly HttpClientHandler _httpClientHandler;
 
-        public Uri BaseUri => _httpClient.BaseAddress;
-
         private const string AuthCookieName = "autodontix";
 
         public Cookie AuthCookie => _httpClientHandler.CookieContainer.GetCookies(_httpClient.BaseAddress)
             .FirstOrDefault(c => c.Name == AuthCookieName);
 
+        public string UriString => _httpClient.BaseAddress.Authority;
+
+        /// <summary>
+        /// not allowed, use other overload
+        /// </summary>
+        private ExpressClient() { }
 
         /// <summary>
         /// construct a client
@@ -105,6 +109,8 @@ namespace DentalManagerPlugin
             public string eid { get; set; }
             /// <summary> when order was uploaded, if at all </summary>
             public DateTime? CreatedUtc { get; set; }
+            /// <summary> when order was reviewed, if at all </summary>
+            public DateTime? ReviewedUtc { get; set; }
             /// <summary> code of any status </summary>
             public int? Status { get; set; }
         }
