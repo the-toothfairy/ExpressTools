@@ -5,6 +5,8 @@ VisualStudioVersion = 16.0.29806.167
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DentalManagerPlugin", "DentalManagerPlugin\DentalManagerPlugin.csproj", "{669D105A-D283-47F3-BB68-19E462A3164F}"
 EndProject
+Project("{54435603-DBB4-11D2-8724-00A0C9A8B90C}") = "ExpressToolsSetup", "ExpressToolsSetup\ExpressToolsSetup.vdproj", "{A88A79B4-952C-4601-8140-B61DE903B70F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -15,6 +17,8 @@ Global
 		{669D105A-D283-47F3-BB68-19E462A3164F}.Debug|x64.Build.0 = Debug|x64
 		{669D105A-D283-47F3-BB68-19E462A3164F}.Release|x64.ActiveCfg = Release|x64
 		{669D105A-D283-47F3-BB68-19E462A3164F}.Release|x64.Build.0 = Release|x64
+		{A88A79B4-952C-4601-8140-B61DE903B70F}.Debug|x64.ActiveCfg = Debug
+		{A88A79B4-952C-4601-8140-B61DE903B70F}.Release|x64.ActiveCfg = Release
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
