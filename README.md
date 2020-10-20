@@ -6,7 +6,7 @@ The ExpressDentalManager plugin lets you check the status of your Express orders
 
 ### If you just want to use the plugin:
 
-You can download the plugin from [Releases](https://github.com/the-toothfairy/ExpressTools/releases). Then follow the instructions in the [Wiki](https://github.com/the-toothfairy/ExpressTools/wiki/) on installing and using it. 
+You can download the plugin from [Releases](https://github.com/the-toothfairy/ExpressTools/releases), ExpressToolsSetup.msi. Then follow the instructions in the [Wiki](https://github.com/the-toothfairy/ExpressTools/wiki/) on installing and using it. 
 
 If you would like to see additional functionality for the plugin, or for other tools you may find relevant, just create an [Issue](https://github.com/the-toothfairy/ExpressTools/issues) on this site.
 
