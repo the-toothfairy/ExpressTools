@@ -37,12 +37,15 @@ namespace DentalManagerPlugin
         }
 
         /// <summary>
-        /// add a paragraph with given <paramref name="text"/>.
+        /// add a paragraph with given <paramref name="text"/>. Can also replace last.
         /// </summary>
-        private void AddText(string text, Visual.Severities severity)
+        private void AddText(string text, Visual.Severities severity, bool replace = false)
         {
             Dispatcher?.Invoke(() =>
             {
+                if (replace)
+                    Par.Inlines.Remove(Par.Inlines.LastInline);
+
                 var color = Visual.MessageColors[severity];
                 var run = new Run("\n" + text) { Foreground = new SolidColorBrush(color) };
                 Par.Inlines.Add(run);
@@ -66,7 +69,7 @@ namespace DentalManagerPlugin
             ShowLoginInTitle(loggedIn ? _idSettings.UserLogin : "");
             ButtonStart.IsEnabled = loggedIn;
             ButtonCancel.IsEnabled = loggedIn;
-            ButtonLogout.Visibility = loggedIn && remembered ? Visibility.Visible : Visibility.Hidden;
+            ButtonLogout.Visibility = loggedIn && remembered ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -177,7 +180,7 @@ namespace DentalManagerPlugin
                 var token = _cancellationTokenSource.Token;
 
                 var bDouble = double.TryParse(TextLastHours.Text, out var hours);
-                if ( !bDouble )
+                if (!bDouble)
                 {
                     AddText("Invalid input for hours (wrong decimal separator?)", Visual.Severities.Error);
                     return;
@@ -226,18 +229,19 @@ namespace DentalManagerPlugin
 
                     var orderHandler = OrderHandler.MakeIfValid(orderDir);
                     if (orderHandler == null)
-                    {
-                        AddText($"{orderDir.Name}: not an order.", Visual.Severities.Warning);
                         continue;
-                    }
 
                     orderHandler.GetStatusInfo(out var creationDateUtc, out var isScanned);
                     if (creationDateUtc < cutoffUtc)
                         continue; // no message, as there will often be many
 
                     if (!isScanned)
+                        continue;
+
+                    var resultData = await _expressClient.GetStatus(orderHandler.OrderId);
+                    if (resultData.Count > 0)
                     {
-                        AddText($"{orderDir.Name}: not in scanned state.", Visual.Severities.Info);
+                        AddText($"{orderDir.Name}: already uploaded {resultData.Count} time(s).", Visual.Severities.Info);
                         continue;
                     }
 
@@ -248,12 +252,12 @@ namespace DentalManagerPlugin
                         continue;
                     }
 
-                    //TODO REMOVE COMMENT
+                    AddText($"{orderDir.Name}: uploading...", Visual.Severities.Good);
                     // do not allow cancel within operation (would be complicated to handle)
-                    //using (var ms = orderHandler.ZipOrderFiles())
-                    //    await _expressClient.Upload(orderHandler.OrderId + ".zip", ms, CancellationToken.None);
+                    using (var ms = orderHandler.ZipOrderFiles())
+                        await _expressClient.Upload(orderHandler.OrderId + ".zip", ms, CancellationToken.None);
+                    AddText($"{orderDir.Name}: uploaded.", Visual.Severities.Good, true);
 
-                    AddText($"{orderDir.Name}: uploaded.", Visual.Severities.Good);
                     nUploads++;
                 }
                 catch (Exception)

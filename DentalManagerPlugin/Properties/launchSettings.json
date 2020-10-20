@@ -1,7 +1,8 @@
 {
   "profiles": {
     "DentalManagerPlugin": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "commandLineArgs": "C:\\3shape\\HS_1047_JONES_A2"
     }
   }
 }

@@ -42,13 +42,12 @@ namespace DentalManagerPlugin
         /// </summary>
         private void ShowLoginInTitle(string user)
         {
-            var t = "Send to FC Express";
+            var t = "FC Express Link";
             if (!string.IsNullOrEmpty(user))
                 t += $" ({user})";
 
             Dispatcher.Invoke(() => { this.Title = t; });
         }
-
 
         public PluginWindow(string orderDir)
         {
@@ -133,11 +132,11 @@ namespace DentalManagerPlugin
             // all of batch part in one go
             // parts of from-DentalManager
             ButtonUpload.IsEnabled = loggedIn; // may not be visible
-            ButtonLogout.Visibility = loggedIn && remembered ? Visibility.Visible : Visibility.Hidden;
+            ButtonLogout.Visibility = loggedIn && remembered ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void RefresAutoUploadDependentControls() => ButtonUpload.Visibility = CheckboxAutoUpload.IsChecked == true ?
-                                                                Visibility.Hidden : Visibility.Visible;
+                                                                Visibility.Collapsed : Visibility.Visible;
 
 
         /// <summary>
@@ -327,6 +326,20 @@ namespace DentalManagerPlugin
             catch (Exception ex)
             {
                 ShowMessage("Error showing result: " + ex.Message, Visual.Severities.Error);
+            }
+        }
+
+        private void ButtonBatchUpload_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var batchWnd = new BatchWindow();
+                batchWnd.Show();
+                this.Close();
+            }
+            catch (Exception ex)
+            {
+                ShowMessage("Error: " + ex.Message, Visual.Severities.Error);
             }
         }
     }

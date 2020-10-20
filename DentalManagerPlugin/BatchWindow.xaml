@@ -36,7 +36,7 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Button Name="ButtonLogout" Grid.Column="0" Height="18" VerticalContentAlignment="Top" FontSize="10" Width="60" Click="ButtonLogout_Click"
+            <Button Name="ButtonLogout" Grid.Column="0" Height="18" VerticalContentAlignment="Top" FontSize="10" Width="55" Click="ButtonLogout_Click"
                     ToolTip="You need not log out, but if you do, you or another user on this PC will be prompted to log in the next time.">
                 Logout
             </Button>
