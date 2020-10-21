@@ -105,46 +105,24 @@ namespace DentalManagerPlugin
         /// </summary>
         public class ResultData
         {
+            /// <summary> to allow int to bool conversion for the fields named "Is..." </summary>
+            public const int TRUE = 1;
+
             /// <summary> id </summary>
             public string eid { get; set; }
             /// <summary> when order was uploaded, if at all </summary>
             public DateTime? CreatedUtc { get; set; }
             /// <summary> when order was reviewed, if at all </summary>
             public DateTime? ReviewedUtc { get; set; }
-            /// <summary> code of any status </summary>
-            public int? Status { get; set; }
+
+            public string StatusMessage { get; set; }
+
+            public int IsDecided { get; set; }
+            public int IsFailed { get; set; }
+            public int IsViewable { get; set; }
+            public int IsNew { get; set; }
+            public int IsForwarded { get; set; }
         }
-
-        /// <summary>
-        /// for <see cref="ResultData.Status"/>. True if new and now yet reviewed or reviewed but left undecided
-        /// </summary>
-        public static bool StatusIsReadyForReview(int st) => st == 0 || st == 3;
-
-        /// <summary>
-        /// for <see cref="ResultData.Status"/>
-        /// </summary>
-        public static bool StatusIsAcceptedDownloaded(int st) => st == 1;
-
-        /// <summary>
-        /// for <see cref="ResultData.Status"/>
-        /// </summary>
-        public static bool StatusIsRejected(int st) => st == 2;
-
-        /// <summary>
-        /// for <see cref="ResultData.Status"/>
-        /// </summary>
-        public static bool StatusIsInProgress(int st) => st == 10;
-
-        /// <summary>
-        /// for <see cref="ResultData.Status"/>. Can be true for various reasons
-        /// </summary>
-        public static bool StatusIsFailure(int st) => st == -3 || st == -2 || st == -1 || st == 11 || st == 12;
-
-        /// <summary>
-        /// for <see cref="ResultData.Status"/>
-        /// </summary>
-        public static bool StatusIsForward(int st) => st == 20 || st == 21 || st == 22 || st == 30 || st == 31 || st == 32;
-
 
         /// <summary>
         /// refresh for current or optionally existing identity. If success, add the cookie to the default headers

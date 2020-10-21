@@ -56,6 +56,14 @@
             "PrerequisitesLocation" = "2:1"
             "Url" = "8:"
             "ComponentsUrl" = "8:"
+                "Items"
+                {
+                    "{EDC2488A-8267-493A-A98E-7D9C3B36CDF3}:.NETFramework,Version=v4.7.2"
+                    {
+                    "Name" = "8:Microsoft .NET Framework 4.7.2 (x86 and x64)"
+                    "ProductCode" = "8:.NETFramework,Version=v4.7.2"
+                    }
+                }
             }
         }
         "Release"
@@ -236,15 +244,15 @@
         {
         "Name" = "8:Microsoft Visual Studio"
         "ProductName" = "8:ExpressToolsSetup"
-        "ProductCode" = "8:{CA3C761A-C39C-485D-AF7E-CA47FB4E53B8}"
-        "PackageCode" = "8:{9BBC3125-8C46-43DD-8075-C5CAF597AC05}"
+        "ProductCode" = "8:{1F74972F-0CA9-4047-B1F0-7BB677B87C99}"
+        "PackageCode" = "8:{856AECA6-F8F9-4807-9B58-1BEE3D3E40D2}"
         "UpgradeCode" = "8:{6B602361-D705-4A6B-8AA7-CE004299E0AD}"
         "AspNetVersion" = "8:4.0.30319.0"
         "RestartWWWService" = "11:FALSE"
         "RemovePreviousVersions" = "11:TRUE"
         "DetectNewerInstalledVersion" = "11:TRUE"
         "InstallAllUsers" = "11:FALSE"
-        "ProductVersion" = "8:1.2.1"
+        "ProductVersion" = "8:1.2.4"
         "Manufacturer" = "8:the-toothfairy"
         "ARPHELPTELEPHONE" = "8:"
         "ARPHELPLINK" = "8:"
@@ -357,9 +365,9 @@
         }
         "Shortcut"
         {
-            "{970C0BB2-C7D0-45D7-ABFA-7EC378858BC0}:_910593212A63460EA9C10E66C287B68B"
+            "{970C0BB2-C7D0-45D7-ABFA-7EC378858BC0}:_9090AA26E39045DCA94DD7D2A2ECFEEE"
             {
-            "Name" = "8:ExpressDentalManagerPlugin.exe"
+            "Name" = "8:Express Batch Upload"
             "Arguments" = "8:"
             "Description" = "8:"
             "ShowCmd" = "3:1"
@@ -373,7 +381,7 @@
             }
             "{970C0BB2-C7D0-45D7-ABFA-7EC378858BC0}:_FFF250E2ADFE4967B37AE2092B454BAC"
             {
-            "Name" = "8:ExpressDentalManagerPlugin.exe"
+            "Name" = "8:Express Batch Upload"
             "Arguments" = "8:"
             "Description" = "8:"
             "ShowCmd" = "3:1"

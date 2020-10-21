@@ -28,7 +28,7 @@
                     HorizontalAlignment="Stretch" FontSize="14" >
                 </TextBox>
                 <Button Name="ButtonInspect" VerticalAlignment="Bottom" Grid.Column="1" Width="60" Height="25" Margin="5,0,0,5"
-                        ToolTip="Opens browser. You may have to log in there, then click this button again."
+                        ToolTip="Opens web site in browser. You may have to log in there."
                         Click="ButtonInspect_Click">View...</Button>
                 <!--will be collapsed-->
             </Grid>

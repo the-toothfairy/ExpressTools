@@ -28,17 +28,10 @@ namespace DentalManagerPlugin
 
         public string UserLogin { get; set; }
 
-        public bool AutoUpload { get; set; }
-
-        public string OrderDirectory { get; set; }
-
-
-        private static string AppDataDir =>
+        public static string AppDataDir =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ExpressDmPlugin");
 
         private static string ProtectedFileFullPath => Path.Combine(AppDataDir, "dmp.xjs");
-
-        private static string UrlFileFullPath => Path.Combine(AppDataDir, "url.txt");
 
         /// <summary>
         /// store <paramref name="sets"/> in AppData as protected json
@@ -82,37 +75,6 @@ namespace DentalManagerPlugin
             {
                 return new IdSettings();
             }
-        }
-
-        /// <summary>
-        /// for development, or in case of emergency, allow reading a different url from unprotected, separate file (so user can change).
-        /// Null if nothing (valid) found. Format: 'https://express.fullcontour.com'. File name: <see cref="UrlFileFullPath"/>
-        /// </summary>
-        private static Uri ReadAnyAssociatedUri()
-        {
-            if (!Directory.Exists(AppDataDir) || !File.Exists(UrlFileFullPath))
-                return null;
-
-            var s = File.ReadAllText(UrlFileFullPath);
-            if (string.IsNullOrEmpty(s))
-                return null;
-            return Uri.TryCreate(s, UriKind.Absolute, out var res) ? res : null;
-        }
-
-        /// <summary>
-        /// return effective URI
-        /// </summary>
-        public static Uri GetUri()
-        {
-            var uri = ReadAnyAssociatedUri(); // allow change
-            if (uri == null)
-            {
-                uri = new Uri("https://express.fullcontour.com/");
-#if DEBUG
-                uri = new Uri("https://localhost:44334/");
-#endif
-            }
-            return uri;
         }
     }
 }

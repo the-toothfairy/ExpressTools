@@ -28,6 +28,7 @@ namespace DentalManagerPlugin
     {
         private ExpressClient _expressClient;
         private IdSettings _idSettings;
+        private AppSettings _appSettings;
 
         private CancellationTokenSource _cancellationTokenSource;
 
@@ -61,6 +62,8 @@ namespace DentalManagerPlugin
             if (!string.IsNullOrEmpty(user))
                 t += $" ({user})";
 
+            t += _appSettings?.GetAnyTestingInfo();
+
             Dispatcher.Invoke(() => { this.Title = t; });
         }
 
@@ -76,13 +79,13 @@ namespace DentalManagerPlugin
         {
             try
             {
+                _idSettings = IdSettings.ReadOrNew();
+                _appSettings = AppSettings.ReadOrNew();
                 ShowLoginInTitle("");
 
-                _idSettings = IdSettings.ReadOrNew();
+                TextOrderDir.Text = _appSettings.OrdersRootDirectory;
 
-                TextOrderDir.Text = _idSettings.OrderDirectory;
-
-                var uri = IdSettings.GetUri();
+                var uri = _appSettings.GetUri();
 
                 _expressClient = new ExpressClient(uri);
 
@@ -144,13 +147,13 @@ namespace DentalManagerPlugin
                 var dlg = new FolderBrowserDialog
                 {
                     Description = @"Select the base directory for all orders (typically c:\3shape)",
-                    SelectedPath = _idSettings.OrderDirectory
+                    SelectedPath = _appSettings.OrdersRootDirectory
                 };
                 if (dlg.ShowDialog() != System.Windows.Forms.DialogResult.OK)
                     return;
                 TextOrderDir.Text = dlg.SelectedPath;
-                _idSettings.OrderDirectory = dlg.SelectedPath;
-                IdSettings.Write(_idSettings);
+                _appSettings.OrdersRootDirectory = dlg.SelectedPath;
+                AppSettings.Write(_appSettings);
             }
             catch (Exception exception)
             {
@@ -166,7 +169,7 @@ namespace DentalManagerPlugin
             {
                 Par.Inlines.Clear();
 
-                var orderBaseDi = new DirectoryInfo(_idSettings.OrderDirectory);
+                var orderBaseDi = new DirectoryInfo(_appSettings.OrdersRootDirectory);
                 if (!orderBaseDi.Exists)
                 {
                     AddText("Order directory does not exist", Visual.Severities.Error);

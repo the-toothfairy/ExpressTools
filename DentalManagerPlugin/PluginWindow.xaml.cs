@@ -19,6 +19,7 @@ namespace DentalManagerPlugin
         private ExpressClient _expressClient;
         private OrderHandler _orderHandler;
         private IdSettings _idSettings;
+        private AppSettings _appSettings;
 
         /// <summary>
         /// must be set before showing
@@ -46,6 +47,8 @@ namespace DentalManagerPlugin
             if (!string.IsNullOrEmpty(user))
                 t += $" ({user})";
 
+            t += _appSettings?.GetAnyTestingInfo();
+
             Dispatcher.Invoke(() => { this.Title = t; });
         }
 
@@ -63,9 +66,17 @@ namespace DentalManagerPlugin
 
             try
             {
+                _idSettings = IdSettings.ReadOrNew();
+                _appSettings = AppSettings.ReadOrNew();
+
                 ShowLoginInTitle("");
 
-                _idSettings = IdSettings.ReadOrNew();
+                if (_appSettings.PluginWindowWidth > 0) // not first time
+                {
+                    this.Top = _appSettings.PluginWindowTop;
+                    this.Left = _appSettings.PluginWindowLeft;
+                    this.Width = _appSettings.PluginWindowWidth;
+                }
 
                 var di = new System.IO.DirectoryInfo(_orderDir);
                 var orderHandler = OrderHandler.MakeIfValid(di);
@@ -79,13 +90,13 @@ namespace DentalManagerPlugin
 
                 _orderHandler = orderHandler;
                 LabelOrder.Content = _orderHandler.OrderId;
-                this.CheckboxAutoUpload.IsChecked = _idSettings.AutoUpload;
+                this.CheckboxAutoUpload.IsChecked = _appSettings.AutoUpload;
                 RefresAutoUploadDependentControls();
                 // now that checkbox is set, wire up events
                 this.CheckboxAutoUpload.Checked += CheckboxAutoUpload_CheckedChanged;
                 this.CheckboxAutoUpload.Unchecked += CheckboxAutoUpload_CheckedChanged;
 
-                var uri = IdSettings.GetUri();
+                var uri = _appSettings.GetUri();
 
                 _expressClient = new ExpressClient(uri);
 
@@ -144,69 +155,63 @@ namespace DentalManagerPlugin
         /// </summary>
         private async Task HandleSingleOrder()
         {
-            // no upload while checking other things, and it may not be allowed later, either
-            this.ButtonUpload.IsEnabled = false;
-            ButtonInspect.Visibility = Visibility.Collapsed;
-            ButtonInspect.Tag = null;
+            var origCursor = Cursor;
+            Cursor = Cursors.Wait;
 
-            var resultData = await _expressClient.GetStatus(_orderHandler.OrderId);
-
-            if (resultData.Count > 1)
+            try
             {
-                ShowMessage("This order has been uploaded multiple times. For details, please go to the web site.", Visual.Severities.Info);
-                return;
-            }
+                // no upload while checking other things, and it may not be allowed later, either
+                this.ButtonUpload.IsEnabled = false;
+                ButtonInspect.Visibility = Visibility.Collapsed;
+                ButtonInspect.Tag = null;
 
-            if (resultData.Count == 1) // order alread uploaded exactly once, can get status
-            {
-                if (!resultData[0].Status.HasValue)
-                    ShowMessage("No status information for this order. Please go to the web site.", Visual.Severities.Warning);
+                var resultData = await _expressClient.GetStatus(_orderHandler.OrderId);
 
-                var st = resultData[0].Status.Value;
-
-                var reviewedLocal = "?";
-
-                if (resultData[0].ReviewedUtc.HasValue)
-                    reviewedLocal = resultData[0].ReviewedUtc.Value.ToLocalTime().ToString();
-
-                if (ExpressClient.StatusIsReadyForReview(st))
+                if (resultData.Count > 1)
                 {
-                    ShowMessage("Design is ready for review on the web site.", Visual.Severities.Good);
-                    ButtonInspect.Visibility = Visibility.Visible;
-                    ButtonInspect.Tag = resultData[0].eid;
+                    ShowMessage("This order has been uploaded multiple times. For details, please go to the web site.", Visual.Severities.Info);
+                    return;
                 }
 
-                else if (ExpressClient.StatusIsAcceptedDownloaded(st))
-                    ShowMessage($"Design was accepted and downloaded at {reviewedLocal}.", Visual.Severities.Info);
+                if (resultData.Count == 1) // order alread uploaded exactly once, can get status
+                {
+                    var msgRes = "Status: " + resultData[0].StatusMessage;
+                    if (resultData[0].ReviewedUtc.HasValue)
+                        msgRes += $". Last viewed: {resultData[0].ReviewedUtc.Value.ToLocalTime()}";
 
-                else if (ExpressClient.StatusIsRejected(st))
-                    ShowMessage($"Design was rejected at {reviewedLocal}.", Visual.Severities.Info);
+                    var severity = Visual.Severities.Info;
+                    if (resultData[0].IsNew == ExpressClient.ResultData.TRUE)
+                        severity = resultData[0].IsFailed == ExpressClient.ResultData.TRUE ? Visual.Severities.Warning : Visual.Severities.Good;
 
-                else if (ExpressClient.StatusIsInProgress(st))
-                    ShowMessage("Design is in progress.", Visual.Severities.Info);
+                    ShowMessage(msgRes, severity);
 
-                else if (ExpressClient.StatusIsFailure(st))
-                    ShowMessage("Design failed. See details on the web site.", Visual.Severities.Warning);
+                    if (resultData[0].IsViewable == ExpressClient.ResultData.TRUE)
+                    {
+                        ButtonInspect.Visibility = Visibility.Visible;
+                        ButtonInspect.Tag = resultData[0].eid;
+                    }
 
+                    return;
+                }
+
+                ShowMessage("Order is new.", Visual.Severities.Info);
+
+                var msg = await _expressClient.Qualify(_orderHandler.GetOrderText());
+                if (!string.IsNullOrEmpty(msg))
+                {
+                    ShowMessage(msg, Visual.Severities.Warning);
+                    return;
+                }
+
+                if (_appSettings.AutoUpload)
+                    await UploadOrder(true); // close window when done
                 else
-                    ShowMessage("Unknown status information for this order. Please go to the web site.", Visual.Severities.Warning);
-
-                return;
+                    ButtonUpload.IsEnabled = true;
             }
-
-            ShowMessage("Order is new.", Visual.Severities.Info);
-
-            var msg = await _expressClient.Qualify(_orderHandler.GetOrderText());
-            if (!string.IsNullOrEmpty(msg))
+            finally
             {
-                ShowMessage(msg, Visual.Severities.Warning);
-                return;
+                Cursor = origCursor;
             }
-
-            if (_idSettings.AutoUpload)
-                await UploadOrder(true); // close window when done
-            else
-                ButtonUpload.IsEnabled = true;
         }
 
         private async Task UploadOrder(bool closeAfterUpload)
@@ -249,6 +254,16 @@ namespace DentalManagerPlugin
         {
             try
             {
+                if (_appSettings != null )
+                {
+                    _appSettings.PluginWindowTop = this.Top;
+                    _appSettings.PluginWindowLeft = this.Left;
+                    _appSettings.PluginWindowWidth = this.Width;
+                    _appSettings.AutoUpload = CheckboxAutoUpload.IsChecked == true;
+
+                    AppSettings.Write(_appSettings);
+                }
+
                 _expressClient?.Dispose();
             }
             catch (Exception)
@@ -288,8 +303,6 @@ namespace DentalManagerPlugin
         {
             try
             {
-                _idSettings.AutoUpload = CheckboxAutoUpload.IsChecked == true;
-                IdSettings.Write(_idSettings);
                 RefresAutoUploadDependentControls();
             }
             catch (Exception ex)
