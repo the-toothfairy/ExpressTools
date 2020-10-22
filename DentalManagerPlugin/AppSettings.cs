@@ -25,6 +25,9 @@ namespace DentalManagerPlugin
         /// <summary> pref for window placement </summary>
         public double PluginWindowWidth { get; set; }
 
+        /// <summary> pref for window placement </summary>
+        public double PluginWindowHeight { get; set; }
+
         public bool UseTestingServer { get; set; }
 
         /// <summary>

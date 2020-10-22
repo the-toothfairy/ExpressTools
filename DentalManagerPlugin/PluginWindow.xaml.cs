@@ -71,11 +71,20 @@ namespace DentalManagerPlugin
 
                 ShowLoginInTitle("");
 
-                if (_appSettings.PluginWindowWidth > 0) // not first time
+                if (_appSettings.PluginWindowWidth > 150 && _appSettings.PluginWindowHeight > 50) // not first time, not too small
                 {
                     this.Top = _appSettings.PluginWindowTop;
                     this.Left = _appSettings.PluginWindowLeft;
                     this.Width = _appSettings.PluginWindowWidth;
+                    this.Height = _appSettings.PluginWindowHeight;
+                }
+
+                if ( string.IsNullOrEmpty(_orderDir))
+                {
+                    ShowMessage($"You must select a single order", Visual.Severities.Error); // DentalManager passes empty if multiple
+                    ButtonUpload.IsEnabled = false;
+                    CheckboxAutoUpload.IsEnabled = false;
+                    return;
                 }
 
                 var di = new System.IO.DirectoryInfo(_orderDir);
@@ -259,6 +268,7 @@ namespace DentalManagerPlugin
                     _appSettings.PluginWindowTop = this.Top;
                     _appSettings.PluginWindowLeft = this.Left;
                     _appSettings.PluginWindowWidth = this.Width;
+                    _appSettings.PluginWindowHeight = this.Height;
                     _appSettings.AutoUpload = CheckboxAutoUpload.IsChecked == true;
 
                     AppSettings.Write(_appSettings);

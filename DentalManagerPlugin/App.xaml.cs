@@ -9,7 +9,7 @@ namespace DentalManagerPlugin
     {
         private void Application_Startup(object sender, StartupEventArgs e)
         {
-            if (e.Args.Length == 1)
+            if (e.Args.Length == 1) // not empty string
             {
                 // DentalManager adds quote at end only, remove it
                 var dir = e.Args[0];
