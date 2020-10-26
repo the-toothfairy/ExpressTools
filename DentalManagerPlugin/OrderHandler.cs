@@ -43,6 +43,17 @@ namespace DentalManagerPlugin
             return new OrderHandler(orderDirInfo, orderFileInfo);
         }
 
+        private static bool IsBackup(string fullPathLowerCase)
+        {
+            foreach (var ds in new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar })
+            {
+                if (fullPathLowerCase.Contains(ds + "backup" + ds)) // dental system backup
+                    return true;
+            }
+            return false;
+
+        }
+
         private static bool IsRequiredNonOrder(string fullPath)
         {
             // dir or pseudo dir, Mac specialty
@@ -51,11 +62,8 @@ namespace DentalManagerPlugin
 
             var ln = fullPath.ToLowerInvariant();
 
-            foreach (var ds in new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar })
-            {
-                if (ln.Contains(ds + "backup" + ds)) // dental system backup
-                    return false;
-            }
+            if (IsBackup(ln))
+                return false;
 
             //-- IO scans: send both raw and non-raw if they exist. Back end determines what to use.
 
@@ -81,6 +89,45 @@ namespace DentalManagerPlugin
             if (string.IsNullOrEmpty(_orderText))
                 _orderText = File.ReadAllText(_orderFileInfo.FullName);
             return _orderText;
+        }
+
+        /// <summary>
+        /// return .3ml file in stream, position 0. caller must dispose
+        /// </summary>
+        public MemoryStream GetAnyModelingTree()
+        {
+            var treeFile = _orderDirectoryInfo.GetFiles("*.3ml", SearchOption.TopDirectoryOnly).FirstOrDefault(fi =>
+                fi.Name.Equals("dentaldesignermodellingtree.3ml", StringComparison.OrdinalIgnoreCase));
+
+            if (treeFile == null || !treeFile.Exists)
+                return null;
+
+            var ms = new MemoryStream();
+            using (var fs = new FileStream(treeFile.FullName, FileMode.Open, FileAccess.Read))
+                fs.CopyTo(ms);
+
+            ms.Position = 0;
+            return ms;
+        }
+
+        /// <summary>
+        /// return number of intraoral scans
+        /// </summary>
+        public int GetNumberOfRawScans()
+        {
+            var n = 0;
+            foreach (var ln in _orderDirectoryInfo.GetFiles("*.dcm", SearchOption.AllDirectories).Select(f => f.FullName.ToLower()))
+            {
+                if (IsBackup(ln))
+                    continue;
+
+                foreach (var ds in new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar })
+                {
+                    if (ln.Contains(ds + "scans" + ds) && ln.Contains(ds + "raw "))
+                        n++;
+                }
+            }
+            return n;
         }
 
         public void GetStatusInfo(out DateTime creationDateUtc, out bool isScanned)

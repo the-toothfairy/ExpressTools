@@ -208,21 +208,38 @@ namespace DentalManagerPlugin
         }
 
         /// <summary>
-        /// see if order can be modeled
+        /// see if order, along with any already existing design, can be modeled
         /// </summary>
         /// <param name="orderText">the xml of the order as a string</param>
+        /// <param name="treeStream">any .3ml file content with position = 0, or null if no such</param>
+        /// <param name="orderId">for identification</param>
         /// <returns>empty if good, otherwise message for why not</returns>
-        public async Task<string> Qualify(string orderText)
+        public async Task<string> Qualify(string orderText, MemoryStream treeStream, string orderId)
         {
             try
             {
                 var textContent = new StringContent(orderText, Encoding.UTF8, "text/xml");
                 var formContent = new MultipartFormDataContent { { textContent, "file", "order.xml" } };
-                var response = await _httpClient.PostAsync("api/Qualification/Qualify", formContent);
+                var response = await _httpClient.PostAsync("api/Qualification/QualifyOrder", formContent);
                 if (!response.IsSuccessStatusCode)
                     return $"Could not qualify order [Error code {response.StatusCode}]";
 
-                return await response.Content.ReadAsStringAsync();
+                var msg = await response.Content.ReadAsStringAsync();
+                if (!string.IsNullOrEmpty(msg))
+                    return msg;
+
+                // if there is a design, check it, too
+                if (treeStream == null || treeStream.Length == 0)
+                    return "";
+
+                var streamContent = new StreamContent(treeStream);
+                formContent = new MultipartFormDataContent { { streamContent, "file", orderId } };
+                response = await _httpClient.PostAsync("api/Qualification/QualifyDesign", formContent);
+                if (!response.IsSuccessStatusCode)
+                    return $"Could not qualify design [Error code {response.StatusCode}]";
+
+                msg = await response.Content.ReadAsStringAsync();
+                return msg;
             }
             catch (Exception e)
             {

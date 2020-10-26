@@ -203,13 +203,23 @@ namespace DentalManagerPlugin
                     return;
                 }
 
-                ShowMessage("Order is new.", Visual.Severities.Info);
+                ShowMessage("Order has not been uploaded before.", Visual.Severities.Info);
 
-                var msg = await _expressClient.Qualify(_orderHandler.GetOrderText());
-                if (!string.IsNullOrEmpty(msg))
+                var nRaw = _orderHandler.GetNumberOfRawScans();
+                if (nRaw != 0 && nRaw != 2)
                 {
-                    ShowMessage(msg, Visual.Severities.Warning);
+                    ShowMessage("Order must contain either 0 or 2 intraoral scans.", Visual.Severities.Warning);
                     return;
+                }
+
+                using (var treeStream = _orderHandler.GetAnyModelingTree())
+                {
+                    var msg = await _expressClient.Qualify(_orderHandler.GetOrderText(), treeStream, _orderHandler.OrderId);
+                    if (!string.IsNullOrEmpty(msg))
+                    {
+                        ShowMessage(msg, Visual.Severities.Warning);
+                        return;
+                    }
                 }
 
                 if (_appSettings.AutoUpload)

@@ -248,11 +248,21 @@ namespace DentalManagerPlugin
                         continue;
                     }
 
-                    var msg = await _expressClient.Qualify(orderHandler.GetOrderText());
-                    if (!string.IsNullOrEmpty(msg))
+                    var nRaw = orderHandler.GetNumberOfRawScans();
+                    if ( nRaw != 0 && nRaw != 2 )
                     {
-                        AddText($"{orderDir.Name}: does not qualify.", Visual.Severities.Info);
+                        AddText($"{orderDir.Name}: does not contain either 0 or 2 intraoral scans.", Visual.Severities.Info);
                         continue;
+                    }
+
+                    using (var treeStream = orderHandler.GetAnyModelingTree())
+                    {
+                        var msg = await _expressClient.Qualify(orderHandler.GetOrderText(), treeStream, orderHandler.OrderId);
+                        if (!string.IsNullOrEmpty(msg))
+                        {
+                            AddText($"{orderDir.Name}: does not qualify.", Visual.Severities.Info);
+                            continue;
+                        }
                     }
 
                     AddText($"{orderDir.Name}: uploading...", Visual.Severities.Good);
