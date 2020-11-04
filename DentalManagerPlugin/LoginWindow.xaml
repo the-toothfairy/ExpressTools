@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:DentalManagerPlugin"
         mc:Ignorable="d"
-        FontSize="12" SizeToContent="Height" Height="130" Width="550" WindowStyle="ToolWindow"
+        FontSize="12" SizeToContent="Height" Width="550" WindowStyle="ToolWindow"
         WindowStartupLocation="CenterOwner" Loaded="Window_Loaded">
     <Grid  Background="#f8f8f8">
         <Grid.ColumnDefinitions>
@@ -16,6 +16,7 @@
             <RowDefinition Height="Auto"></RowDefinition>
             <RowDefinition Height="Auto"></RowDefinition>
             <RowDefinition Height="*"></RowDefinition>
+            <RowDefinition x:Name="RowUpdateMessage" Height="Auto"></RowDefinition>
         </Grid.RowDefinitions>
         <Label Grid.Row="0" Grid.Column="0" Margin="0,5,5,5">Login:</Label>
         <StackPanel  Grid.Row="0" Grid.Column="1"  Orientation="Horizontal">
@@ -28,5 +29,11 @@
             <Button Name="ButtonLogin" Width="80" Height="25" Margin="0" Click="ButtonLogin_Click" HorizontalAlignment="Left">Login</Button>
             <Label Name="LabelErrorMessage" Foreground="Red" Margin="10,0,0,0"></Label>
         </StackPanel>
+        <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="5,5,0,5" >
+            <TextBlock TextWrapping="Wrap" Foreground="Red" Width="300">This plugin is outdated. It may not work correctly.
+            Check github.com/the-toothfairy/ExpressTools for a new release. </TextBlock>
+            <Button Name="ButtonOk" VerticalAlignment="Bottom" Width="60" Height="25" Margin="40,5,5,5" Click="ButtonOk_Click">OK</Button>
+        </StackPanel>
+
     </Grid>
 </Window>

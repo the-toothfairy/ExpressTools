@@ -16,7 +16,7 @@
 
             <StackPanel Grid.Row="0" Margin="0,5,0,5" Orientation="Horizontal">
                 <Label>Order:</Label>
-                <Label Margin="5,0,0,0" Name="LabelOrder" HorizontalAlignment="Stretch"></Label>
+                <TextBlock Margin="5,0,0,0" Name="TextBlockOrder" HorizontalAlignment="Stretch" VerticalAlignment="Center"></TextBlock>
             </StackPanel>
 
             <Grid Grid.Row="1">
@@ -43,12 +43,10 @@
                     ToolTip="You need not log out, but if you do, you or another user on this PC will be prompted to log in the next time.">
                         Logout
                     </Button>
-                    <Button Height="25" Width="90" Click="ButtonBatchUpload_Click" ToolTip="Close this window and open the batch upload window">
-                        Batch Upload
-                    </Button>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Name="PanelFromDentalManager" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,5" >
-                    <CheckBox VerticalContentAlignment="Center" Name="CheckboxAutoUpload" Margin="0,0,10,0">Automatically upload eligible orders</CheckBox>
+                    <CheckBox VerticalContentAlignment="Center" Name="CheckboxAutoUpload" Width="auto" Margin="0,0,10,0" VerticalAlignment="Stretch">
+                        <TextBlock Text="Upload eligible orders automatically" TextWrapping="Wrap"/> </CheckBox>
                     <Button Height="25" Width="80"  HorizontalAlignment="Right" Name="ButtonUpload" Click="ButtonUpload_Click">Upload</Button>
                 </StackPanel>
             </Grid>

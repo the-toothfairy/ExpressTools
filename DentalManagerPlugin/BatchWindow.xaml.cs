@@ -87,6 +87,8 @@ namespace DentalManagerPlugin
 
                 var uri = _appSettings.GetUri();
 
+                //TODO remove
+                uri = new Uri("https://express.fullcontour.com");
                 _expressClient = new ExpressClient(uri);
 
                 // detect if valid previous login
@@ -180,7 +182,7 @@ namespace DentalManagerPlugin
 
                 _cancellationTokenSource?.Dispose();
                 _cancellationTokenSource = new CancellationTokenSource();
-                var token = _cancellationTokenSource.Token;
+                var cancelToken = _cancellationTokenSource.Token;
 
                 var bDouble = double.TryParse(TextLastHours.Text, out var hours);
                 if (!bDouble)
@@ -192,7 +194,7 @@ namespace DentalManagerPlugin
                 var cutOff = DateTime.UtcNow.AddHours(-hours);
                 Cursor = Cursors.Wait;
 
-                int nUp = await RunAll(subDirs, cutOff, token);
+                int nUp = await RunAll(subDirs, cutOff, cancelToken);
 
                 AddText($"\n{nUp} orders uploaded.", Visual.Severities.Info);
             }
@@ -230,7 +232,7 @@ namespace DentalManagerPlugin
                     if (orderDir.Name == "ManufacturingDir") // special directory
                         continue;
 
-                    var orderHandler = OrderHandler.MakeIfValid(orderDir);
+                    var orderHandler = OrderHandler.MakeIfValid(orderDir.FullName);
                     if (orderHandler == null)
                         continue;
 
@@ -248,26 +250,27 @@ namespace DentalManagerPlugin
                         continue;
                     }
 
-                    var nRaw = orderHandler.GetNumberOfRawScans();
-                    if ( nRaw != 0 && nRaw != 2 )
+                    var filterOutput = await _expressClient.Filter(orderHandler.AllRelativePaths);
+                    if (filterOutput == null || filterOutput.Kind == "")
                     {
-                        AddText($"{orderDir.Name}: does not contain either 0 or 2 intraoral scans.", Visual.Severities.Info);
+                        AddText($"{orderDir.Name}: Could not find files in order to upload.", Visual.Severities.Error);
                         continue;
                     }
 
-                    using (var treeStream = orderHandler.GetAnyModelingTree())
+                    using (var orderStream = orderHandler.GetStream(filterOutput.OrderPath))
+                    using (var designStream = orderHandler.GetStream(filterOutput.DesignPath))
                     {
-                        var msg = await _expressClient.Qualify(orderHandler.GetOrderText(), treeStream, orderHandler.OrderId);
+                        var msg = await _expressClient.Qualify(filterOutput, orderStream, designStream);
                         if (!string.IsNullOrEmpty(msg))
                         {
-                            AddText($"{orderDir.Name}: does not qualify.", Visual.Severities.Info);
+                            AddText($"{orderDir.Name}: {msg}", Visual.Severities.Info);
                             continue;
                         }
                     }
 
                     AddText($"{orderDir.Name}: uploading...", Visual.Severities.Good);
                     // do not allow cancel within operation (would be complicated to handle)
-                    using (var ms = orderHandler.ZipOrderFiles())
+                    using (var ms = orderHandler.ZipOrderFiles(filterOutput.AllPaths))
                         await _expressClient.Upload(orderHandler.OrderId + ".zip", ms, CancellationToken.None);
                     AddText($"{orderDir.Name}: uploaded.", Visual.Severities.Good, true);
 
@@ -298,6 +301,30 @@ namespace DentalManagerPlugin
                     throw;
 
                 AddText(exception.Message, Visual.Severities.Error);
+            }
+        }
+
+        private void TextLastHours_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            try
+            {
+                const double defaultHours = 24;
+                const double maxHours = 31 * 24 * 12 * 5;
+                if (double.TryParse(TextLastHours.Text, out var dt))
+                {
+                    if (dt > maxHours)
+                    {
+                        TextLastHours.Text = maxHours.ToString();
+                        e.Handled = true;
+                    }
+                    return;
+                }
+
+                TextLastHours.Text = defaultHours.ToString();
+                e.Handled = true;
+            }
+            catch (Exception)
+            {
             }
         }
     }

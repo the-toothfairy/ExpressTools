@@ -1,8 +1,7 @@
 {
   "profiles": {
     "DentalManagerPlugin": {
-      "commandName": "Project",
-      "commandLineArgs": "C:\\3shape\\IOCase"
+      "commandName": "Project"
     }
   }
 }

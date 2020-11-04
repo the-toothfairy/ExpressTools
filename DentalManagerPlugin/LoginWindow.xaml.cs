@@ -24,6 +24,9 @@ namespace DentalManagerPlugin
 
         public bool LoginRemembered { get; private set; }
 
+        public bool VersionOk { get; private set; }
+
+
 
         public LoginWindow(IdSettings idSettings, ExpressClient expressClient)
         {
@@ -42,6 +45,7 @@ namespace DentalManagerPlugin
         {
             LoginSuccessful = false;
             LoginRemembered = false;
+            VersionOk = false;
             LabelErrorMessage.Content = "";
             var origCursor = Cursor;
             try
@@ -68,7 +72,17 @@ namespace DentalManagerPlugin
                     }
 
                     IdSettings.Write(_idSettings); // also if null auth cookie
+
                     LoginSuccessful = true;
+
+                    VersionOk = await _expressClient.CheckIfCurrentVersion();
+                    if ( !VersionOk )
+                    {
+                        RowUpdateMessage.MaxHeight = 100;
+                        ButtonLogin.IsEnabled = false;
+                        return;
+                    }
+
                     this.Close();
                 }
                 catch (Exception exception)
@@ -85,8 +99,29 @@ namespace DentalManagerPlugin
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            if (!string.IsNullOrEmpty(_idSettings.UserLogin))
-                TextLogin.Text = _idSettings.UserLogin;
+            try
+            {
+                RowUpdateMessage.MaxHeight = 0; // hide
+
+                if (!string.IsNullOrEmpty(_idSettings.UserLogin))
+                    TextLogin.Text = _idSettings.UserLogin;
+            }
+            catch (Exception exception)
+            {
+                LabelErrorMessage.Content = exception.Message;
+            }
+        }
+
+        private void ButtonOk_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                this.Close();
+            }
+            catch ( Exception exception)
+            {
+                LabelErrorMessage.Content = exception.Message;
+            }
         }
     }
 }

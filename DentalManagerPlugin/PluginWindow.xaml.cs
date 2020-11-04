@@ -26,6 +26,8 @@ namespace DentalManagerPlugin
         /// </summary>
         private readonly string _orderDir;
 
+        private ExpressClient.FilterOutput _filterOutput; // for delayed upload
+
         /// <summary>
         /// display a message in color. show option to log out if "remember me" and error
         /// </summary>
@@ -87,18 +89,16 @@ namespace DentalManagerPlugin
                     return;
                 }
 
-                var di = new System.IO.DirectoryInfo(_orderDir);
-                var orderHandler = OrderHandler.MakeIfValid(di);
-                if (orderHandler == null)
+                _orderHandler = OrderHandler.MakeIfValid(_orderDir);
+                if (_orderHandler == null)
                 {
-                    ShowMessage($"{di.FullName} is not a valid order directory", Visual.Severities.Error);
+                    ShowMessage($"{_orderDir} is not a valid order directory", Visual.Severities.Error);
                     ButtonUpload.IsEnabled = false;
                     CheckboxAutoUpload.IsEnabled = false;
                     return;
                 }
 
-                _orderHandler = orderHandler;
-                LabelOrder.Content = _orderHandler.OrderId;
+                TextBlockOrder.Text = _orderHandler.OrderId; // Label would not show first underscore
                 this.CheckboxAutoUpload.IsChecked = _appSettings.AutoUpload;
                 RefresAutoUploadDependentControls();
                 // now that checkbox is set, wire up events
@@ -169,19 +169,20 @@ namespace DentalManagerPlugin
 
             try
             {
+                _filterOutput = null;
+
                 // no upload while checking other things, and it may not be allowed later, either
                 this.ButtonUpload.IsEnabled = false;
                 ButtonInspect.Visibility = Visibility.Collapsed;
                 ButtonInspect.Tag = null;
 
                 var resultData = await _expressClient.GetStatus(_orderHandler.OrderId);
-
                 if (resultData.Count > 1)
                 {
-                    ShowMessage("This order has been uploaded multiple times. For details, please go to the web site.", Visual.Severities.Info);
+                    ShowMessage("This order has been uploaded multiple times. For details, please go to the web site.",
+                        Visual.Severities.Info);
                     return;
                 }
-
                 if (resultData.Count == 1) // order alread uploaded exactly once, can get status
                 {
                     var msgRes = "Status: " + resultData[0].StatusMessage;
@@ -190,7 +191,8 @@ namespace DentalManagerPlugin
 
                     var severity = Visual.Severities.Info;
                     if (resultData[0].IsNew == ExpressClient.ResultData.TRUE)
-                        severity = resultData[0].IsFailed == ExpressClient.ResultData.TRUE ? Visual.Severities.Warning : Visual.Severities.Good;
+                        severity = resultData[0].IsFailed == ExpressClient.ResultData.TRUE ?
+                            Visual.Severities.Warning : Visual.Severities.Good;
 
                     ShowMessage(msgRes, severity);
 
@@ -205,21 +207,24 @@ namespace DentalManagerPlugin
 
                 ShowMessage("Order has not been uploaded before.", Visual.Severities.Info);
 
-                var nRaw = _orderHandler.GetNumberOfRawScans();
-                if (nRaw != 0 && nRaw != 2)
+                _filterOutput = await _expressClient.Filter(_orderHandler.AllRelativePaths);
+                if (_filterOutput == null || _filterOutput.Kind == "")
                 {
-                    ShowMessage("Order must contain either 0 or 2 intraoral scans.", Visual.Severities.Warning);
+                    ShowMessage("Could not find files in order to upload.", Visual.Severities.Error);
                     return;
                 }
 
-                using (var treeStream = _orderHandler.GetAnyModelingTree())
+                var msg = "";
+                using (var orderStream = _orderHandler.GetStream(_filterOutput.OrderPath))
+                using (var designStream = _orderHandler.GetStream(_filterOutput.DesignPath))
                 {
-                    var msg = await _expressClient.Qualify(_orderHandler.GetOrderText(), treeStream, _orderHandler.OrderId);
-                    if (!string.IsNullOrEmpty(msg))
-                    {
-                        ShowMessage(msg, Visual.Severities.Warning);
-                        return;
-                    }
+                    msg = await _expressClient.Qualify(_filterOutput, orderStream, designStream);
+                }
+
+                if ( !string.IsNullOrEmpty(msg))
+                {
+                    ShowMessage(msg, Visual.Severities.Warning);
+                    return;
                 }
 
                 if (_appSettings.AutoUpload)
@@ -239,7 +244,7 @@ namespace DentalManagerPlugin
 
             try
             {
-                using (var ms = _orderHandler.ZipOrderFiles())
+                using (var ms = _orderHandler.ZipOrderFiles(_filterOutput.AllPaths))
                     await _expressClient.Upload(_orderHandler.OrderId + ".zip", ms, CancellationToken.None);
             }
             catch (Exception ex)
@@ -359,20 +364,6 @@ namespace DentalManagerPlugin
             catch (Exception ex)
             {
                 ShowMessage("Error showing result: " + ex.Message, Visual.Severities.Error);
-            }
-        }
-
-        private void ButtonBatchUpload_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                var batchWnd = new BatchWindow();
-                batchWnd.Show();
-                this.Close();
-            }
-            catch (Exception ex)
-            {
-                ShowMessage("Error: " + ex.Message, Visual.Severities.Error);
             }
         }
     }

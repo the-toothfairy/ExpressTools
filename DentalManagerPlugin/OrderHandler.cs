@@ -1,8 +1,10 @@
 ﻿using System;
 using System.IO;
 using System.IO.Compression;
+using System.Text;
 using System.Linq;
 using System.Xml.Linq;
+using System.Collections.Generic;
 
 namespace DentalManagerPlugin
 {
@@ -11,123 +13,76 @@ namespace DentalManagerPlugin
     /// </summary>
     public class OrderHandler
     {
+        private readonly DirectoryInfo _orderDirectoryInfo;
+
         /// <summary>
         /// ID of order = name of its directory
         /// </summary>
         public string OrderId => _orderDirectoryInfo?.Name;
 
-        private readonly DirectoryInfo _orderDirectoryInfo;
-        private readonly FileInfo _orderFileInfo;
-        private string _orderText;
+        private FileInfo OrderFileInfo => new FileInfo(Path.Combine(_orderDirectoryInfo.FullName, _orderDirectoryInfo.Name + ".xml"));
 
-        private OrderHandler()
+        private OrderHandler(DirectoryInfo validOrderDirInfo)
         {
-            // not allowed
-        }
-
-        private OrderHandler(DirectoryInfo di, FileInfo fi)
-        {
-            _orderDirectoryInfo = di;
-            _orderFileInfo = fi;
-        }
-
-        public static OrderHandler MakeIfValid(DirectoryInfo orderDirInfo)
-        {
-            if (orderDirInfo == null || !orderDirInfo.Exists)
-                return null;
-
-            var orderFileInfo = new FileInfo(Path.Combine(orderDirInfo.FullName, orderDirInfo.Name + ".xml"));
-            if (!orderFileInfo.Exists)
-                return null;
-
-            return new OrderHandler(orderDirInfo, orderFileInfo);
-        }
-
-        private static bool IsBackup(string fullPathLowerCase)
-        {
-            foreach (var ds in new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar })
-            {
-                if (fullPathLowerCase.Contains(ds + "backup" + ds)) // dental system backup
-                    return true;
-            }
-            return false;
-
-        }
-
-        private static bool IsRequiredNonOrder(string fullPath)
-        {
-            // dir or pseudo dir, Mac specialty
-            if (Path.EndsInDirectorySeparator(fullPath) || fullPath.Contains("__MACOSX", StringComparison.OrdinalIgnoreCase))
-                return false;
-
-            var ln = fullPath.ToLowerInvariant();
-
-            if (IsBackup(ln))
-                return false;
-
-            //-- IO scans: send both raw and non-raw if they exist. Back end determines what to use.
-
-            if (ln.EndsWith("preparationscan.dcm") || ln.EndsWith("antagonistscan.dcm"))
-                return true;
-
-            if (ln.EndsWith("raw preparation scan.dcm") || ln.EndsWith("raw antagonist scan.dcm"))
-                return true;
-
-            if (ln.EndsWith("materials.xml") || ln.EndsWith("manufacturers.3ml") || ln.EndsWith("dentaldesignermodellingtree.3ml"))
-                return true;
-
-            return false;
-        }
-
-
-        /// <summary>
-        /// get the contents of the order xml file as string
-        /// </summary>
-        /// <returns></returns>
-        public string GetOrderText()
-        {
-            if (string.IsNullOrEmpty(_orderText))
-                _orderText = File.ReadAllText(_orderFileInfo.FullName);
-            return _orderText;
+            _orderDirectoryInfo = validOrderDirInfo;
         }
 
         /// <summary>
-        /// return .3ml file in stream, position 0. caller must dispose
+        /// create with order directory. Returns null if not valid or not containing any order
         /// </summary>
-        public MemoryStream GetAnyModelingTree()
+        /// <param name="orderDir">full path to directory</param>
+        public static OrderHandler MakeIfValid(string orderDir)
         {
-            var treeFile = _orderDirectoryInfo.GetFiles("*.3ml", SearchOption.TopDirectoryOnly).FirstOrDefault(fi =>
-                fi.Name.Equals("dentaldesignermodellingtree.3ml", StringComparison.OrdinalIgnoreCase));
-
-            if (treeFile == null || !treeFile.Exists)
+            if (!Directory.Exists(orderDir))
                 return null;
 
-            var ms = new MemoryStream();
-            using (var fs = new FileStream(treeFile.FullName, FileMode.Open, FileAccess.Read))
-                fs.CopyTo(ms);
+            var odi = new DirectoryInfo(orderDir);
+            var orderFile = Path.Combine(orderDir, odi.Name + ".xml");
+            if (!File.Exists(orderFile))
+                return null;
 
-            ms.Position = 0;
-            return ms;
+            return new OrderHandler(odi);
         }
 
-        /// <summary>
-        /// return number of intraoral scans
-        /// </summary>
-        public int GetNumberOfRawScans()
+        private string RelativePath(string fullPath)
         {
-            var n = 0;
-            foreach (var ln in _orderDirectoryInfo.GetFiles("*.dcm", SearchOption.AllDirectories).Select(f => f.FullName.ToLower()))
-            {
-                if (IsBackup(ln))
-                    continue;
+            var fn = _orderDirectoryInfo.Parent == null ? fullPath : _orderDirectoryInfo.Parent.FullName;
+            fn = fn.TrimEnd('\\').TrimEnd('/');
+            if (!fullPath.StartsWith(fn))
+                return fullPath;
 
-                foreach (var ds in new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar })
-                {
-                    if (ln.Contains(ds + "scans" + ds) && ln.Contains(ds + "raw "))
-                        n++;
-                }
-            }
-            return n;
+            var relPath = fullPath.Substring(fn.Length);
+            if (relPath.StartsWith("\\") || relPath.StartsWith("/"))
+                relPath = relPath.Substring(1);
+
+            relPath = relPath.Replace("\\", "/"); // zip convention
+            return relPath;
+        }
+
+        private string FullPath(string relPath) => Path.Combine(_orderDirectoryInfo.Parent == null ?
+            _orderDirectoryInfo.FullName : _orderDirectoryInfo.Parent.FullName, relPath);
+
+
+        /// <summary>
+        /// all files within order directory. Paths start with OrderId/
+        /// </summary>
+        public IEnumerable<string> AllRelativePaths => _orderDirectoryInfo.EnumerateFiles("*", SearchOption.AllDirectories)
+            .Select(fi => RelativePath(fi.FullName));
+
+        /// <summary>
+        /// return stream (FileStream) or null if file given by <paramref name="relPath"/> does not exist or if <paramref name="relPath"/>
+        /// is empty or null
+        /// </summary>
+        public Stream GetStream(string relPath)
+        {
+            if (string.IsNullOrEmpty(relPath))
+                return null;
+
+            var pa = FullPath(relPath);
+            if (!File.Exists(pa))
+                return null;
+
+            return new FileStream(pa, FileMode.Open);
         }
 
         public void GetStatusInfo(out DateTime creationDateUtc, out bool isScanned)
@@ -135,14 +90,9 @@ namespace DentalManagerPlugin
             creationDateUtc = DateTime.MinValue;
             isScanned = false;
 
-            if (string.IsNullOrEmpty(_orderText))
-                _orderText = File.ReadAllText(_orderFileInfo.FullName);
-
             try
             {
-                XDocument doc;
-                using (TextReader sr = new StringReader(_orderText))
-                    doc = XDocument.Load(sr);
+                var doc = XDocument.Load(OrderFileInfo.FullName);
 
                 // find the first type = TDM_Item_ModelElement node
                 if (!(doc.Root?.Descendants().FirstOrDefault(n => n.Attribute("type")?.Value == "TDM_Item_ModelElement")
@@ -169,34 +119,22 @@ namespace DentalManagerPlugin
         }
 
         /// <summary>
-        /// pack all relevant order files in a zip archive, as stream. Is set to Position 0. Caller must dispose.
-        /// Does not add preferences. Back end will use user's.
+        /// pack all relevant order files (as indivates by <paramref name="relPaths"/>) in a zip archive, as stream.
+        /// Is set to Position 0. Caller must dispose. Does not add preferences. Back end will use user's.
         /// </summary>
-        public MemoryStream ZipOrderFiles()
+        public MemoryStream ZipOrderFiles(IEnumerable<string> relPaths)
         {
             var res = new MemoryStream();
-            using (var newArchive = new ZipArchive(res, ZipArchiveMode.Create, true))
+            using (var newArchive = new ZipArchive(res, ZipArchiveMode.Create, true, Encoding.UTF8))
             {
-                void AddEntry(FileInfo ofi)
+                foreach ( var relPath in relPaths )
                 {
                     // careful with sub-directories (scans)
-                    var fullPath = ofi.FullName.Replace("\\", "/"); // zip standard is '/'
-                    var i = fullPath.IndexOf(OrderId, StringComparison.OrdinalIgnoreCase);
-                    if (i < 0)
-                        throw new Exception("Cannot find order name in path of file to zip");
-                    var newName = fullPath.Substring(i);
-                    var newEntry = newArchive.CreateEntry(newName);
-                    using (var fromStream = new FileStream(ofi.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    var fullPath = FullPath(relPath);
+                    var newEntry = newArchive.CreateEntry(relPath.Replace("\\", "/")); // to be safe
+                    using (var fromStream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read))
                     using (var toStream = newEntry.Open())
                         fromStream.CopyTo(toStream);
-                }
-
-                AddEntry(_orderFileInfo);
-
-                foreach (var fi in _orderDirectoryInfo.EnumerateFiles("*", SearchOption.AllDirectories))
-                {
-                    if (IsRequiredNonOrder(fi.FullName)) // order: must be exactly same, case sensitive
-                        AddEntry(fi);
                 }
             }
 

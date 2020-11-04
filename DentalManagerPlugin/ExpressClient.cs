@@ -16,11 +16,66 @@ namespace DentalManagerPlugin
     /// </summary>
     public class ExpressClient : IDisposable
     {
+
+        #region data transfer POCOs
+
+        /// <summary>
+        /// POCO for serialization
+        /// </summary>
+        public class TokenData
+        {
+            public string token { get; set; }
+            public string tokenName { get; set; }
+        }
+
+        /// <summary>
+        /// POCO for deserialization
+        /// </summary>
+        public class ResultData
+        {
+            /// <summary> to allow int to bool conversion for the fields named "Is..." </summary>
+            public const int TRUE = 1;
+
+            /// <summary> id </summary>
+            public string eid { get; set; }
+            /// <summary> when order was uploaded, if at all </summary>
+            public DateTime? CreatedUtc { get; set; }
+            /// <summary> when order was reviewed, if at all </summary>
+            public DateTime? ReviewedUtc { get; set; }
+
+            public string StatusMessage { get; set; }
+
+            public int IsDecided { get; set; }
+            public int IsFailed { get; set; }
+            public int IsViewable { get; set; }
+            public int IsNew { get; set; }
+            public int IsForwarded { get; set; }
+        }
+
+        /// <summary>
+        /// relative paths form zip archive or order folder: list of required ones, plus special ones
+        /// </summary>
+        public class FilterOutput
+        {
+            public List<string> AllPaths { get; } = new List<string>();
+
+            public string OrderPath { get; set; }
+
+            public string DesignPath { get; set; }
+
+            public string Kind { get; set; }
+        }
+
+        #endregion
+
+
         private readonly HttpClient _httpClient;
 
         private readonly HttpClientHandler _httpClientHandler;
 
         private const string AuthCookieName = "autodontix";
+
+        private const string ThisVersion = "1.3";
 
         public Cookie AuthCookie => _httpClientHandler.CookieContainer.GetCookies(_httpClient.BaseAddress)
             .FirstOrDefault(c => c.Name == AuthCookieName);
@@ -91,37 +146,23 @@ namespace DentalManagerPlugin
             }
         }
 
-        /// <summary>
-        /// POCO for serialization
-        /// </summary>
-        public class TokenData
+        public async Task<bool> CheckIfCurrentVersion()
         {
-            public string token { get; set; }
-            public string tokenName { get; set; }
-        }
+            try
+            {
+                var response = await _httpClient.GetAsync("/Home/VersionApi");
+                if (response.StatusCode != HttpStatusCode.OK)
+                    return false;
 
-        /// <summary>
-        /// POCO for deserialization
-        /// </summary>
-        public class ResultData
-        {
-            /// <summary> to allow int to bool conversion for the fields named "Is..." </summary>
-            public const int TRUE = 1;
-
-            /// <summary> id </summary>
-            public string eid { get; set; }
-            /// <summary> when order was uploaded, if at all </summary>
-            public DateTime? CreatedUtc { get; set; }
-            /// <summary> when order was reviewed, if at all </summary>
-            public DateTime? ReviewedUtc { get; set; }
-
-            public string StatusMessage { get; set; }
-
-            public int IsDecided { get; set; }
-            public int IsFailed { get; set; }
-            public int IsViewable { get; set; }
-            public int IsNew { get; set; }
-            public int IsForwarded { get; set; }
+                var svs = await response.Content.ReadAsStringAsync();
+                var serverVersion = new Version(svs);
+                var clientVersion = new Version(ThisVersion);
+                return clientVersion.CompareTo(serverVersion) == 0;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         /// <summary>
@@ -208,37 +249,72 @@ namespace DentalManagerPlugin
         }
 
         /// <summary>
+        /// return info on which files are relevant, and in what roles
+        /// </summary>
+        /// <param name="allRelativePaths">all paths in order, starting with order name as directory</param>
+        public async Task<FilterOutput> Filter(IEnumerable<string> allRelativePaths)
+        {
+            var relPathsString = JsonConvert.SerializeObject(allRelativePaths);
+            var textContent = new StringContent(relPathsString, Encoding.UTF8);
+            var formContent = new MultipartFormDataContent { { textContent, "relPathsList" } };
+            var response = await _httpClient.PostAsync("api/Qualification/Filter", formContent);
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            var sResp = await response.Content.ReadAsStringAsync();
+            return JsonConvert.DeserializeObject<FilterOutput>(sResp);
+        }
+
+
+        /// <summary>
         /// see if order, along with any already existing design, can be modeled
         /// </summary>
-        /// <param name="orderText">the xml of the order as a string</param>
-        /// <param name="treeStream">any .3ml file content with position = 0, or null if no such</param>
-        /// <param name="orderId">for identification</param>
+        /// <param name="filterOutput">has info on which files to examine</param>
+        /// <param name="orderStream">the xml of the order</param>
+        /// <param name="designStream">any .3ml content, or null if no such</param>
         /// <returns>empty if good, otherwise message for why not</returns>
-        public async Task<string> Qualify(string orderText, MemoryStream treeStream, string orderId)
+        public async Task<string> Qualify(FilterOutput filterOutput, Stream orderStream, Stream designStream)
         {
+            MemoryStream ToMemStream(Stream stream)
+            {
+                var ms = new MemoryStream();
+                if (stream.CanSeek)
+                    stream.Seek(0, SeekOrigin.Begin);
+                stream.CopyTo(ms);
+                ms.Position = 0;
+                return ms;
+            }
+
             try
             {
-                var textContent = new StringContent(orderText, Encoding.UTF8, "text/xml");
-                var formContent = new MultipartFormDataContent { { textContent, "file", "order.xml" } };
-                var response = await _httpClient.PostAsync("api/Qualification/QualifyOrder", formContent);
-                if (!response.IsSuccessStatusCode)
+                var formAllContent = new MultipartFormDataContent();
+
+                using (var memStream = ToMemStream(orderStream))
+                {
+                    var content = new ByteArrayContent(memStream.ToArray());
+                    formAllContent.Add(content, "orderFile", filterOutput.OrderPath);
+                }
+
+                if (designStream != null)
+                {
+                    using (var memStream = ToMemStream(designStream))
+                    {
+                        var content = new ByteArrayContent(memStream.ToArray());
+                        formAllContent.Add(content, "designFile");
+                    }
+                }
+
+                var content2 = new StringContent(JsonConvert.SerializeObject(filterOutput.AllPaths));
+                formAllContent.Add(content2, "fileList");
+
+                content2 = new StringContent(filterOutput.OrderPath);
+                formAllContent.Add(content2, "caseFileName");
+
+                var response = await _httpClient.PostAsync("api/Qualification/QualifyAll", formAllContent);
+                if (!response.IsSuccessStatusCode || !response.Content.Headers.ContentType.MediaType.Contains("text"))
                     return $"Could not qualify order [Error code {response.StatusCode}]";
 
                 var msg = await response.Content.ReadAsStringAsync();
-                if (!string.IsNullOrEmpty(msg))
-                    return msg;
-
-                // if there is a design, check it, too
-                if (treeStream == null || treeStream.Length == 0)
-                    return "";
-
-                var streamContent = new StreamContent(treeStream);
-                formContent = new MultipartFormDataContent { { streamContent, "file", orderId } };
-                response = await _httpClient.PostAsync("api/Qualification/QualifyDesign", formContent);
-                if (!response.IsSuccessStatusCode)
-                    return $"Could not qualify design [Error code {response.StatusCode}]";
-
-                msg = await response.Content.ReadAsStringAsync();
                 return msg;
             }
             catch (Exception e)
