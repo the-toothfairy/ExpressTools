@@ -28,6 +28,8 @@ namespace DentalManagerPlugin
 
         private ExpressClient.FilterOutput _filterOutput; // for delayed upload
 
+        private string _resultId;
+
         /// <summary>
         /// display a message in color. show option to log out if "remember me" and error
         /// </summary>
@@ -81,7 +83,7 @@ namespace DentalManagerPlugin
                     this.Height = _appSettings.PluginWindowHeight;
                 }
 
-                if ( string.IsNullOrEmpty(_orderDir))
+                if (string.IsNullOrEmpty(_orderDir))
                 {
                     ShowMessage($"You must select a single order", Visual.Severities.Error); // DentalManager passes empty if multiple
                     ButtonUpload.IsEnabled = false;
@@ -185,22 +187,12 @@ namespace DentalManagerPlugin
                 }
                 if (resultData.Count == 1) // order alread uploaded exactly once, can get status
                 {
-                    var msgRes = "Status: " + resultData[0].StatusMessage;
-                    if (resultData[0].ReviewedUtc.HasValue)
-                        msgRes += $". Last viewed: {resultData[0].ReviewedUtc.Value.ToLocalTime()}";
+                    Display(resultData[0]);
 
-                    var severity = Visual.Severities.Info;
-                    if (resultData[0].IsNew == ExpressClient.ResultData.TRUE)
-                        severity = resultData[0].IsFailed == ExpressClient.ResultData.TRUE ?
-                            Visual.Severities.Warning : Visual.Severities.Good;
-
-                    ShowMessage(msgRes, severity);
+                    _resultId = resultData[0].eid;
 
                     if (resultData[0].IsViewable == ExpressClient.ResultData.TRUE)
-                    {
                         ButtonInspect.Visibility = Visibility.Visible;
-                        ButtonInspect.Tag = resultData[0].eid;
-                    }
 
                     return;
                 }
@@ -221,7 +213,7 @@ namespace DentalManagerPlugin
                     msg = await _expressClient.Qualify(_filterOutput, orderStream, designStream);
                 }
 
-                if ( !string.IsNullOrEmpty(msg))
+                if (!string.IsNullOrEmpty(msg))
                 {
                     ShowMessage(msg, Visual.Severities.Warning);
                     return;
@@ -235,6 +227,39 @@ namespace DentalManagerPlugin
             finally
             {
                 Cursor = origCursor;
+            }
+        }
+
+        private void Display(ExpressClient.ResultData resultData)
+        {
+            var msgRes = "Status: " + resultData.StatusMessage;
+            if (resultData.ReviewedUtc.HasValue)
+                msgRes += $". Last viewed: {resultData.ReviewedUtc.Value.ToLocalTime()}";
+            else if (resultData.Status == 0)
+                msgRes += ", ready for review";
+
+            var severity = Visual.Severities.Info;
+            if (resultData.Status == 0) // new and good
+                severity = Visual.Severities.Emphasis;
+            else if (resultData.Status == -1) // new but failed
+                severity = Visual.Severities.Warning;
+            else if (resultData.Status == 1) // downloaded
+                severity = Visual.Severities.Good;
+            else if (resultData.Status == 2) // rejected
+                severity = Visual.Severities.Rejection;
+
+            ShowMessage(msgRes, severity);
+        }
+
+        private async Task OnStatusChange(string resultId, int i0, int decidedAfter, string m)
+        {
+            if (resultId != _resultId)
+                return;
+
+            if (decidedAfter == ExpressClient.ResultData.TRUE)
+            {
+                var r = await _expressClient.GetSingleStatus(_resultId);
+                Display(r);
             }
         }
 
@@ -278,7 +303,7 @@ namespace DentalManagerPlugin
         {
             try
             {
-                if (_appSettings != null )
+                if (_appSettings != null)
                 {
                     _appSettings.PluginWindowTop = this.Top;
                     _appSettings.PluginWindowLeft = this.Left;
@@ -351,14 +376,16 @@ namespace DentalManagerPlugin
             }
         }
 
-        private void ButtonInspect_Click(object sender, RoutedEventArgs e)
+        private async void ButtonInspect_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                if (!(ButtonInspect.Tag is string eid))
+                if (string.IsNullOrEmpty(_resultId))
                     return;
 
-                var url = "https://" + _expressClient.UriString + "/Inspect/" + eid;
+                await _expressClient.TryStartNotifications(OnStatusChange);
+
+                var url = "https://" + _expressClient.UriString + "/Inspect/" + _resultId;
                 Process.Start(new ProcessStartInfo("cmd", $"/c start {url}") { CreateNoWindow = true });
             }
             catch (Exception ex)

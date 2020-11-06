@@ -32,6 +32,12 @@ namespace DentalManagerPlugin
 
         private CancellationTokenSource _cancellationTokenSource;
 
+        private class BatchSummary
+        {
+            internal int NoUploaded { get; set; }
+            internal int NoNotQualified { get; set; }
+        }
+
         public BatchWindow()
         {
             InitializeComponent();
@@ -87,8 +93,6 @@ namespace DentalManagerPlugin
 
                 var uri = _appSettings.GetUri();
 
-                //TODO remove
-                uri = new Uri("https://express.fullcontour.com");
                 _expressClient = new ExpressClient(uri);
 
                 // detect if valid previous login
@@ -194,9 +198,9 @@ namespace DentalManagerPlugin
                 var cutOff = DateTime.UtcNow.AddHours(-hours);
                 Cursor = Cursors.Wait;
 
-                int nUp = await RunAll(subDirs, cutOff, cancelToken);
+                var summary = await RunAll(subDirs, cutOff, cancelToken);
 
-                AddText($"\n{nUp} orders uploaded.", Visual.Severities.Info);
+                AddText($"\n{summary.NoUploaded} orders uploaded ({summary.NoNotQualified} did not qualify).", Visual.Severities.Info);
             }
             catch (Exception exception)
             {
@@ -210,9 +214,9 @@ namespace DentalManagerPlugin
             Cursor = origCursor;
         }
 
-        private async Task<int> RunAll(DirectoryInfo[] orderDirs, DateTime cutoffUtc, CancellationToken token)
+        private async Task<BatchSummary> RunAll(DirectoryInfo[] orderDirs, DateTime cutoffUtc, CancellationToken token)
         {
-            var nUploads = 0;
+            var summary = new BatchSummary();
 
             foreach (var orderDir in orderDirs)
             {
@@ -244,16 +248,13 @@ namespace DentalManagerPlugin
                         continue;
 
                     var resultData = await _expressClient.GetStatus(orderHandler.OrderId);
-                    if (resultData.Count > 0)
-                    {
-                        AddText($"{orderDir.Name}: already uploaded {resultData.Count} time(s).", Visual.Severities.Info);
+                    if (resultData.Count > 0) // uploaded before
                         continue;
-                    }
 
                     var filterOutput = await _expressClient.Filter(orderHandler.AllRelativePaths);
                     if (filterOutput == null || filterOutput.Kind == "")
                     {
-                        AddText($"{orderDir.Name}: Could not find files in order to upload.", Visual.Severities.Error);
+                        summary.NoNotQualified++;
                         continue;
                     }
 
@@ -263,7 +264,7 @@ namespace DentalManagerPlugin
                         var msg = await _expressClient.Qualify(filterOutput, orderStream, designStream);
                         if (!string.IsNullOrEmpty(msg))
                         {
-                            AddText($"{orderDir.Name}: {msg}", Visual.Severities.Info);
+                            summary.NoNotQualified++;
                             continue;
                         }
                     }
@@ -274,17 +275,18 @@ namespace DentalManagerPlugin
                         await _expressClient.Upload(orderHandler.OrderId + ".zip", ms, CancellationToken.None);
                     AddText($"{orderDir.Name}: uploaded.", Visual.Severities.Good, true);
 
-                    nUploads++;
+                    summary.NoUploaded++;
                 }
                 catch (Exception)
                 {
                     // do not stop loop just because one case failed
                     AddText($"{orderDir.Name}: error.", Visual.Severities.Error);
+                    summary.NoNotQualified++;
                     continue;
                 }
             }
 
-            return nUploads;
+            return summary;
         }
 
 

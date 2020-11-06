@@ -19,6 +19,8 @@ namespace DentalManagerPlugin
             Good,
             Warning,
             Error,
+            Emphasis,
+            Rejection,
         }
 
         public static Dictionary<Severities, Color> MessageColors = new Dictionary<Severities, Color>
@@ -27,6 +29,8 @@ namespace DentalManagerPlugin
             { Severities.Good, Colors.Green },
             { Severities.Warning, Colors.DarkOrange },
             { Severities.Error, Colors.Red },
+            { Severities.Emphasis, Colors.Blue },
+            { Severities.Rejection, Colors.Tomato },
         };
     }
 }

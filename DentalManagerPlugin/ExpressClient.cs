@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using Microsoft.AspNetCore.SignalR.Client;
 
 namespace DentalManagerPlugin
 {
@@ -43,6 +44,7 @@ namespace DentalManagerPlugin
             /// <summary> when order was reviewed, if at all </summary>
             public DateTime? ReviewedUtc { get; set; }
 
+            public int? Status { get; set; }
             public string StatusMessage { get; set; }
 
             public int IsDecided { get; set; }
@@ -72,6 +74,9 @@ namespace DentalManagerPlugin
         private readonly HttpClient _httpClient;
 
         private readonly HttpClientHandler _httpClientHandler;
+
+        private HubConnection _signalRConnection;
+        private IDisposable _signalRSubscription;
 
         private const string AuthCookieName = "autodontix";
 
@@ -104,6 +109,39 @@ namespace DentalManagerPlugin
             {
                 BaseAddress = baseUri,
             };
+
+        }
+
+
+        /// <summary>
+        /// starts SignalR
+        /// </summary>
+        /// <param name="onStatusChange">method receiving arguments: result ID, wasDecided (0 false/1 true), isNowDecided (0/1), text)
+        /// </param>
+        /// <returns>true iff success</returns>
+        public async Task<bool> TryStartNotifications(Func<string, int, int, string, Task> onStatusChange)
+        {
+            if (_signalRConnection != null)
+                return true;
+
+            try
+            {
+                var signalRUrl = "https://" + _httpClient.BaseAddress.Authority + "/resultStatusHub";
+                _signalRConnection = new HubConnectionBuilder().WithUrl(signalRUrl, (options) =>
+                {
+                    options.Cookies.Add(AuthCookie);
+                }).WithAutomaticReconnect().Build();
+
+               _signalRSubscription = _signalRConnection.On("statusChange", onStatusChange);
+
+                await _signalRConnection.StartAsync();
+                return _signalRConnection.State == HubConnectionState.Connected;
+            }
+            catch (Exception e)
+            {
+                var s = e.Message;
+                return false;
+            }
         }
 
         /// <summary>
@@ -219,7 +257,7 @@ namespace DentalManagerPlugin
         public async Task Logout()
         {
             // no antiforgery token needed
-            await _httpClient.GetAsync("home/logout/");
+            await _httpClient.GetAsync("home/logoutapi/");
         }
 
         /// <summary>
@@ -246,6 +284,27 @@ namespace DentalManagerPlugin
             var sResp = await response.Content.ReadAsStringAsync();
             var resultDatas = JsonConvert.DeserializeObject<List<ResultData>>(sResp);
             return resultDatas;
+        }
+
+        /// <summary>
+        /// get status for a single order by known ID. Will throw if it does not exist.
+        /// </summary>
+        /// <param name="resultId">id of result</param>
+        public async Task<ResultData> GetSingleStatus(string resultId)
+        {
+            var postData = new FormUrlEncodedContent(
+               new List<KeyValuePair<string, string>>
+               {
+                    new KeyValuePair<string, string>("eResultId", resultId),
+               });
+
+            var response = await _httpClient.PostAsync("api/Results/Single", postData);
+            if (!response.IsSuccessStatusCode)
+                throw new Exception($"Could not get status for result [Error code {response.StatusCode}]");
+
+            var sResp = await response.Content.ReadAsStringAsync();
+            var resultData = JsonConvert.DeserializeObject<ResultData>(sResp);
+            return resultData;
         }
 
         /// <summary>
@@ -334,6 +393,7 @@ namespace DentalManagerPlugin
 
         public void Dispose()
         {
+            _signalRSubscription?.Dispose();
             _httpClient?.Dispose();
             _httpClientHandler?.Dispose(); // safe to dispose both
         }
