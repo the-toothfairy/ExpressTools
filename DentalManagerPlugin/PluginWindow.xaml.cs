@@ -1,13 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Net;
-using System.Security.RightsManagement;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace DentalManagerPlugin
 {
@@ -16,6 +17,31 @@ namespace DentalManagerPlugin
     /// </summary>
     public partial class PluginWindow : Window
     {
+        /// <summary>Windows function</summary>
+        [DllImport("User32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        static extern int GetClassName(IntPtr hwnd, StringBuilder lpClassName, int nMaxCount);
+
+        /// <summary>Windows delegate</summary>
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        /// <summary>Windows function</summary>
+        [DllImport("user32.dll")]
+        private static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
+
+        delegate void WinEventDelegate(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject,
+            int idChild, uint dwEventThread, uint dwmsEventTime);
+
+        const uint WINEVENT_OUTOFCONTEXT = 0;
+        const uint WINEVENT_SKIPOWNPROCESS = 2;
+        const uint EVENT_SYSTEM_FOREGROUND = 3;
+
+        [DllImport("user32.dll")]
+        static extern bool UnhookWinEvent(IntPtr hWinEventHook);
+
+        [DllImport("user32.dll")]
+        static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc,
+            IntPtr lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
+
         private ExpressClient _expressClient;
         private OrderHandler _orderHandler;
         private IdSettings _idSettings;
@@ -29,6 +55,12 @@ namespace DentalManagerPlugin
         private ExpressClient.FilterOutput _filterOutput; // for delayed upload
 
         private string _resultId;
+
+        // handling of window positions
+        private IntPtr _winEventHook;
+        private static int _callbackInterlockValue = 0;
+        private IntPtr _hWndDentalManager;
+        private GCHandle _gchWinEventDelegate;
 
         /// <summary>
         /// display a message in color. show option to log out if "remember me" and error
@@ -171,6 +203,16 @@ namespace DentalManagerPlugin
 
             try
             {
+                _hWndDentalManager = TryFindDentalManagerWindow(); // must make sure this window is in foreground of DentalManager
+                if (_hWndDentalManager != IntPtr.Zero)
+                {
+                    WinEventDelegate pinnedDelegate = OnForegroundWindowChanged;
+                    _gchWinEventDelegate = GCHandle.Alloc(pinnedDelegate);
+                    var functionPtr = Marshal.GetFunctionPointerForDelegate<WinEventDelegate>(pinnedDelegate);
+                    _winEventHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero,
+                        functionPtr, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
+                }
+
                 _filterOutput = null;
 
                 // no upload while checking other things, and it may not be allowed later, either
@@ -251,16 +293,13 @@ namespace DentalManagerPlugin
             ShowMessage(msgRes, severity);
         }
 
-        private async Task OnStatusChange(string resultId, int i0, int decidedAfter, string m)
+        private async Task OnOrderStatusChange(string resultId, int i0, int i1, string m)
         {
             if (resultId != _resultId)
                 return;
 
-            if (decidedAfter == ExpressClient.ResultData.TRUE)
-            {
-                var r = await _expressClient.GetSingleStatus(_resultId);
-                Display(r);
-            }
+            var r = await _expressClient.GetSingleStatus(_resultId);
+            Display(r);
         }
 
         private async Task UploadOrder(bool closeAfterUpload)
@@ -301,6 +340,16 @@ namespace DentalManagerPlugin
         /// </summary>
         private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
+            try
+            {
+                UnhookWinEvent(_winEventHook);
+
+                if (_gchWinEventDelegate.IsAllocated)
+                    _gchWinEventDelegate.Free();
+            }
+            catch (Exception)
+            { }
+
             try
             {
                 if (_appSettings != null)
@@ -383,7 +432,7 @@ namespace DentalManagerPlugin
                 if (string.IsNullOrEmpty(_resultId))
                     return;
 
-                await _expressClient.TryStartNotifications(OnStatusChange);
+                await _expressClient.TryStartNotifications(OnOrderStatusChange);
 
                 var url = "https://" + _expressClient.UriString + "/Inspect/" + _resultId;
                 Process.Start(new ProcessStartInfo("cmd", $"/c start {url}") { CreateNoWindow = true });
@@ -392,6 +441,61 @@ namespace DentalManagerPlugin
             {
                 ShowMessage("Error showing result: " + ex.Message, Visual.Severities.Error);
             }
+        }
+
+        private void OnForegroundWindowChanged(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild,
+            uint dwEventThread, uint dwmsEventTime)
+        {
+            // prevent reentrancy.
+            if (0 == Interlocked.Exchange(ref _callbackInterlockValue, 1))
+            {
+                if (eventType == EVENT_SYSTEM_FOREGROUND) // TODO remove? (always so)
+                {
+                    if (hwnd == _hWndDentalManager)
+                    {
+                        Dispatcher.Invoke(() =>
+                        {
+                            if (this.WindowState == WindowState.Minimized)
+                                this.WindowState = WindowState.Normal;
+                            this.Activate();
+                            this.Topmost = true;
+                            this.Focus();
+                        });
+                    }
+                    else
+                    {
+                        Dispatcher.Invoke(() =>
+                        {
+                            this.WindowState = WindowState.Minimized;
+                            this.Topmost = false;
+                        });
+                    }
+                }
+                Interlocked.Exchange(ref _callbackInterlockValue, 0);
+            };
+        }
+
+        private IntPtr TryFindDentalManagerWindow()
+        {
+            IntPtr res = IntPtr.Zero;
+            try
+            {
+                var hWnd = IntPtr.Zero;
+                EnumWindows((hWnd, param) => // loop over all windows
+                {
+                    var classText = new StringBuilder("", 100);
+                    GetClassName(hWnd, classText, 100);
+                    if (classText.ToString() == "TDentalManagerMainForm")
+                        res = hWnd;
+                    return res == IntPtr.Zero; // continue unless found
+                }, IntPtr.Zero);
+            }
+            catch (Exception)
+            {
+                return IntPtr.Zero;
+            }
+
+            return res;
         }
     }
 }

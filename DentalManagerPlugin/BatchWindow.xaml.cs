@@ -34,8 +34,11 @@ namespace DentalManagerPlugin
 
         private class BatchSummary
         {
-            internal int NoUploaded { get; set; }
-            internal int NoNotQualified { get; set; }
+            internal int NoInDirectory { get; set; }
+            internal int NoCreatedInPeriod { get; set; }
+            internal int NoUploadedBefore { get; set; }
+            internal int NoUploadedNow { get; set; }
+            internal int NoNotQualifiedNow { get; set; }
         }
 
         public BatchWindow()
@@ -200,7 +203,12 @@ namespace DentalManagerPlugin
 
                 var summary = await RunAll(subDirs, cutOff, cancelToken);
 
-                AddText($"\n{summary.NoUploaded} orders uploaded ({summary.NoNotQualified} did not qualify).", Visual.Severities.Info);
+                var text = $"\nTotal number of orders in order directory: {summary.NoInDirectory}\n";
+                text += $"Number of orders created in the last {hours} hours: {summary.NoCreatedInPeriod}\n";
+                text += $"  thereof uploaded earlier: {summary.NoUploadedBefore}; did not qualify: {summary.NoNotQualifiedNow}\n";
+                text += $"Number of orders uploaded now: {summary.NoUploadedNow}";
+
+                AddText(text, Visual.Severities.Info);
             }
             catch (Exception exception)
             {
@@ -240,21 +248,25 @@ namespace DentalManagerPlugin
                     if (orderHandler == null)
                         continue;
 
+                    summary.NoInDirectory++;
+
                     orderHandler.GetStatusInfo(out var creationDateUtc, out var isScanned);
-                    if (creationDateUtc < cutoffUtc)
+                    if (creationDateUtc < cutoffUtc || !isScanned)
                         continue; // no message, as there will often be many
 
-                    if (!isScanned)
-                        continue;
+                    summary.NoCreatedInPeriod++;
 
                     var resultData = await _expressClient.GetStatus(orderHandler.OrderId);
                     if (resultData.Count > 0) // uploaded before
+                    {
+                        summary.NoUploadedBefore++;
                         continue;
+                    }
 
                     var filterOutput = await _expressClient.Filter(orderHandler.AllRelativePaths);
                     if (filterOutput == null || filterOutput.Kind == "")
                     {
-                        summary.NoNotQualified++;
+                        summary.NoNotQualifiedNow++;
                         continue;
                     }
 
@@ -264,7 +276,7 @@ namespace DentalManagerPlugin
                         var msg = await _expressClient.Qualify(filterOutput, orderStream, designStream);
                         if (!string.IsNullOrEmpty(msg))
                         {
-                            summary.NoNotQualified++;
+                            summary.NoNotQualifiedNow++;
                             continue;
                         }
                     }
@@ -275,20 +287,19 @@ namespace DentalManagerPlugin
                         await _expressClient.Upload(orderHandler.OrderId + ".zip", ms, CancellationToken.None);
                     AddText($"{orderDir.Name}: uploaded.", Visual.Severities.Good, true);
 
-                    summary.NoUploaded++;
+                    summary.NoUploadedNow++;
                 }
                 catch (Exception)
                 {
                     // do not stop loop just because one case failed
                     AddText($"{orderDir.Name}: error.", Visual.Severities.Error);
-                    summary.NoNotQualified++;
+                    summary.NoNotQualifiedNow++;
                     continue;
                 }
             }
 
             return summary;
         }
-
 
         private void ButtonCancel_Click(object sender, RoutedEventArgs e)
         {
