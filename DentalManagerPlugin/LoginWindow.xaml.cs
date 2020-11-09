@@ -71,7 +71,7 @@ namespace DentalManagerPlugin
                         _idSettings.AuthCookie = null;
                     }
 
-                    IdSettings.Write(_idSettings); // also if null auth cookie
+                    _idSettings.Write(); // also if null auth cookie
 
                     LoginSuccessful = true;
 

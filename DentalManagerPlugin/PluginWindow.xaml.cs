@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Net;
+using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,6 +18,8 @@ namespace DentalManagerPlugin
     /// </summary>
     public partial class PluginWindow : Window
     {
+        #region low-level Windows handling
+
         /// <summary>Windows function</summary>
         [DllImport("User32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         static extern int GetClassName(IntPtr hwnd, StringBuilder lpClassName, int nMaxCount);
@@ -42,6 +45,16 @@ namespace DentalManagerPlugin
         static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr hmodWinEventProc,
             IntPtr lpfnWinEventProc, uint idProcess, uint idThread, uint dwFlags);
 
+        [DllImport("user32.dll")]
+        static extern int GetWindowText(IntPtr hwnd, StringBuilder lpString, int nMaxCount);
+
+
+        private IntPtr _winEventHook;
+        private static int _callbackInterlockValue = 0;
+        private GCHandle _gchWinEventDelegate;
+
+        #endregion
+
         private ExpressClient _expressClient;
         private OrderHandler _orderHandler;
         private IdSettings _idSettings;
@@ -56,11 +69,7 @@ namespace DentalManagerPlugin
 
         private string _resultId;
 
-        // handling of window positions
-        private IntPtr _winEventHook;
-        private static int _callbackInterlockValue = 0;
-        private IntPtr _hWndDentalManager;
-        private GCHandle _gchWinEventDelegate;
+
 
         /// <summary>
         /// display a message in color. show option to log out if "remember me" and error
@@ -139,7 +148,7 @@ namespace DentalManagerPlugin
                 this.CheckboxAutoUpload.Checked += CheckboxAutoUpload_CheckedChanged;
                 this.CheckboxAutoUpload.Unchecked += CheckboxAutoUpload_CheckedChanged;
 
-                var uri = _appSettings.GetUri();
+                var uri = _appSettings.GetUri(true); // TODO true only for debug
 
                 _expressClient = new ExpressClient(uri);
 
@@ -203,15 +212,12 @@ namespace DentalManagerPlugin
 
             try
             {
-                _hWndDentalManager = TryFindDentalManagerWindow(); // must make sure this window is in foreground of DentalManager
-                if (_hWndDentalManager != IntPtr.Zero)
-                {
-                    WinEventDelegate pinnedDelegate = OnForegroundWindowChanged;
-                    _gchWinEventDelegate = GCHandle.Alloc(pinnedDelegate);
-                    var functionPtr = Marshal.GetFunctionPointerForDelegate<WinEventDelegate>(pinnedDelegate);
-                    _winEventHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero,
-                        functionPtr, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
-                }
+                // make sure this window stays in foreground of DentalManager even if other windows open or close
+                WinEventDelegate pinnedDelegate = OnForegroundWindowChanged;
+                _gchWinEventDelegate = GCHandle.Alloc(pinnedDelegate);
+                var functionPtr = Marshal.GetFunctionPointerForDelegate(pinnedDelegate);
+                _winEventHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, IntPtr.Zero,
+                    functionPtr, 0, 0, WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
 
                 _filterOutput = null;
 
@@ -229,7 +235,7 @@ namespace DentalManagerPlugin
                 }
                 if (resultData.Count == 1) // order alread uploaded exactly once, can get status
                 {
-                    Display(resultData[0]);
+                    DisplayOrderStatus(resultData[0]);
 
                     _resultId = resultData[0].eid;
 
@@ -272,7 +278,7 @@ namespace DentalManagerPlugin
             }
         }
 
-        private void Display(ExpressClient.ResultData resultData)
+        private void DisplayOrderStatus(ExpressClient.ResultData resultData)
         {
             var msgRes = "Status: " + resultData.StatusMessage;
             if (resultData.ReviewedUtc.HasValue)
@@ -299,7 +305,7 @@ namespace DentalManagerPlugin
                 return;
 
             var r = await _expressClient.GetSingleStatus(_resultId);
-            Display(r);
+            DisplayOrderStatus(r);
         }
 
         private async Task UploadOrder(bool closeAfterUpload)
@@ -342,8 +348,7 @@ namespace DentalManagerPlugin
         {
             try
             {
-                UnhookWinEvent(_winEventHook);
-
+                UnhookWinEvent(_winEventHook); // do this first
                 if (_gchWinEventDelegate.IsAllocated)
                     _gchWinEventDelegate.Free();
             }
@@ -383,7 +388,7 @@ namespace DentalManagerPlugin
                     return;
 
                 _idSettings.AuthCookie = null;
-                IdSettings.Write(_idSettings);
+                _idSettings.Write();
 
                 if (_expressClient == null)
                     return; // should not happen, but to be save
@@ -446,12 +451,17 @@ namespace DentalManagerPlugin
         private void OnForegroundWindowChanged(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild,
             uint dwEventThread, uint dwmsEventTime)
         {
-            // prevent reentrancy.
+            // note: only set to be called for (eventType == EVENT_SYSTEM_FOREGROUND), and not for own process
+
+            // prevent reentrancy
             if (0 == Interlocked.Exchange(ref _callbackInterlockValue, 1))
             {
-                if (eventType == EVENT_SYSTEM_FOREGROUND) // TODO remove? (always so)
+                try
                 {
-                    if (hwnd == _hWndDentalManager)
+                    var windowText = new StringBuilder("", 100);
+                    GetWindowText(hwnd, windowText, 100);
+                    // find by title. this title also in international versions. may end with "(inactive")
+                    if (windowText.ToString().Contains("3Shape Dental Manager"))
                     {
                         Dispatcher.Invoke(() =>
                         {
@@ -471,31 +481,11 @@ namespace DentalManagerPlugin
                         });
                     }
                 }
-                Interlocked.Exchange(ref _callbackInterlockValue, 0);
-            };
-        }
-
-        private IntPtr TryFindDentalManagerWindow()
-        {
-            IntPtr res = IntPtr.Zero;
-            try
-            {
-                var hWnd = IntPtr.Zero;
-                EnumWindows((hWnd, param) => // loop over all windows
+                finally
                 {
-                    var classText = new StringBuilder("", 100);
-                    GetClassName(hWnd, classText, 100);
-                    if (classText.ToString() == "TDentalManagerMainForm")
-                        res = hWnd;
-                    return res == IntPtr.Zero; // continue unless found
-                }, IntPtr.Zero);
+                    Interlocked.Exchange(ref _callbackInterlockValue, 0);
+                }
             }
-            catch (Exception)
-            {
-                return IntPtr.Zero;
-            }
-
-            return res;
         }
     }
 }

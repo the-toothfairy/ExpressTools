@@ -14,14 +14,15 @@ namespace DentalManagerPlugin
     /// </summary>
     public class IdSettings
     {
-        private static readonly IDataProtector Protector;
+        [JsonIgnore]
+        internal IDataProtector Protector { get; set; }
 
-        static IdSettings()
+
+        /// <summary>
+        /// not allowed, use <see cref="ReadOrNew"/>
+        /// </summary>
+        private IdSettings()
         {
-            var serviceCollection = new ServiceCollection();
-            serviceCollection.AddDataProtection();
-            var services = serviceCollection.BuildServiceProvider();
-            Protector = services.GetDataProtector("expresstools");
         }
 
         public Cookie AuthCookie { get; set; }
@@ -36,9 +37,9 @@ namespace DentalManagerPlugin
         /// <summary>
         /// store <paramref name="sets"/> in AppData as protected json
         /// </summary>
-        public static void Write(IdSettings sets)
+        public void Write()
         {
-            var s = JsonConvert.SerializeObject(sets);
+            var s = JsonConvert.SerializeObject(this);
             var sProtected = Protector.Protect(s);
 
             if (!Directory.Exists(AppDataDir))
@@ -48,33 +49,31 @@ namespace DentalManagerPlugin
         }
 
         /// <summary>
-        /// read any from protected json file in AppData. Return null if no such json file.
-        /// </summary>
-        private static IdSettings Read()
-        {
-            if (!Directory.Exists(AppDataDir) || !File.Exists(ProtectedFileFullPath))
-                return null;
-
-            var sProtected = File.ReadAllText(ProtectedFileFullPath);
-            var s = Protector.Unprotect(sProtected);
-            var sets = JsonConvert.DeserializeObject<IdSettings>(s);
-            return sets;
-        }
-
-        /// <summary>
         /// read any from json file in AppData. Return new Settings if no such json file or any error.
         /// </summary>
         public static IdSettings ReadOrNew()
         {
-            try
+            var serviceCollection = new ServiceCollection();
+            serviceCollection.AddDataProtection();
+            var services = serviceCollection.BuildServiceProvider();
+            var protector = services.GetDataProtector("expresstools");
+
+            if (!Directory.Exists(AppDataDir))
             {
-                var sets = Read();
-                return sets ?? new IdSettings();
+                Directory.CreateDirectory(AppDataDir);
+                return new IdSettings { Protector = protector };
             }
-            catch (Exception)
-            {
-                return new IdSettings();
-            }
+
+            if ( !File.Exists(ProtectedFileFullPath))
+                return new IdSettings { Protector = protector };
+
+            var sProtected = File.ReadAllText(ProtectedFileFullPath);
+            var s = protector.Unprotect(sProtected);
+            var sets = JsonConvert.DeserializeObject<IdSettings>(s);
+
+            var res = sets ?? new IdSettings();
+            res.Protector = protector;
+            return res;
         }
     }
 }

@@ -121,6 +121,9 @@ namespace DentalManagerPlugin
             catch (Exception exception)
             {
                 AddText(exception.Message, Visual.Severities.Error);
+
+                AddText(exception.StackTrace, Visual.Severities.Error);
+
                 RefreshLoginDependentControls(false, false);
                 return;
             }
@@ -134,7 +137,7 @@ namespace DentalManagerPlugin
                     return;
 
                 _idSettings.AuthCookie = null;
-                IdSettings.Write(_idSettings);
+                _idSettings.Write();
 
                 if (_expressClient == null)
                     return; // should not happen, but to be save

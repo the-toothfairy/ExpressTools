@@ -31,13 +31,14 @@ namespace DentalManagerPlugin
         public bool UseTestingServer { get; set; }
 
         /// <summary>
-        /// return effective URI. always localhost in debug
+        /// return effective URI. always localhost in debug unless <paramref name="useProductionInDebug"/> is true
         /// </summary>
-        public Uri GetUri()
+        public Uri GetUri(bool useProductionInDebug = false)
         {
             var s = UseTestingServer ? "fcexpressfront-testing.azurewebsites.net" : "express.fullcontour.com";
 #if DEBUG
-            s = "localhost:44334";
+            if ( !useProductionInDebug)
+                s = "localhost:44334";
 #endif
             return new Uri("https://" + s);
         }
