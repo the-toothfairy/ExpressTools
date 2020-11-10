@@ -244,15 +244,15 @@
         {
         "Name" = "8:Microsoft Visual Studio"
         "ProductName" = "8:ExpressToolsSetup"
-        "ProductCode" = "8:{1F74972F-0CA9-4047-B1F0-7BB677B87C99}"
-        "PackageCode" = "8:{856AECA6-F8F9-4807-9B58-1BEE3D3E40D2}"
+        "ProductCode" = "8:{6B4A5801-BE51-4407-9088-78677800A4D6}"
+        "PackageCode" = "8:{9965DD7C-77FD-4E5E-900A-5F5C1026F21A}"
         "UpgradeCode" = "8:{6B602361-D705-4A6B-8AA7-CE004299E0AD}"
         "AspNetVersion" = "8:4.0.30319.0"
         "RestartWWWService" = "11:FALSE"
         "RemovePreviousVersions" = "11:TRUE"
         "DetectNewerInstalledVersion" = "11:TRUE"
         "InstallAllUsers" = "11:FALSE"
-        "ProductVersion" = "8:1.2.4"
+        "ProductVersion" = "8:1.3"
         "Manufacturer" = "8:the-toothfairy"
         "ARPHELPTELEPHONE" = "8:"
         "ARPHELPLINK" = "8:"
@@ -650,7 +650,7 @@
                 {
                     "{688940B3-5CA9-4162-8DEE-2993FA9D8CBC}:_8146C113A1814434979341655D2939F9"
                     {
-                    "Sequence" = "3:100"
+                    "Sequence" = "3:110"
                     "DisplayName" = "8:Finished"
                     "UseDynamicProperties" = "11:TRUE"
                     "IsDependency" = "11:FALSE"
@@ -676,8 +676,8 @@
                             "Type" = "3:15"
                             "ContextData" = "8:"
                             "Attributes" = "3:0"
-                            "Setting" = "3:1"
-                            "Value" = "8:#1258"
+                            "Setting" = "3:2"
+                            "Value" = "8:Open the DentalSystem Control Panel to finish setting up the plugin. See instructions on https://github.com/the-toothfairy/ExpressTools/wiki/Installing-the-DentalManager-plugin"
                             "DefaultValue" = "8:#1258"
                             "UsePlugInResources" = "11:TRUE"
                             }

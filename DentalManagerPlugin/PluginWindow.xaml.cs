@@ -403,11 +403,15 @@ namespace DentalManagerPlugin
             }
         }
 
-        private void CheckboxAutoUpload_CheckedChanged(object sender, RoutedEventArgs e)
+        private async void CheckboxAutoUpload_CheckedChanged(object sender, RoutedEventArgs e)
         {
             try
             {
                 RefresAutoUploadDependentControls();
+
+                // if user checked this option just now, for an order that had already qualified, upload immediately
+                if ( CheckboxAutoUpload.IsChecked == true && ButtonUpload.IsEnabled )
+                    await UploadOrder(true); // close window when done
             }
             catch (Exception ex)
             {
