@@ -225,22 +225,14 @@ namespace DentalManagerPlugin
             Cursor = origCursor;
         }
 
-        private async Task<BatchSummary> RunAll(DirectoryInfo[] orderDirs, DateTime cutoffUtc, CancellationToken token)
+        private async Task<BatchSummary> RunAll(DirectoryInfo[] orderDirs, DateTime cutoffUtc, CancellationToken cancelToken)
         {
             var summary = new BatchSummary();
 
             foreach (var orderDir in orderDirs)
             {
-                if (token.IsCancellationRequested)
-                {
-                    var stop = false;
-                    Dispatcher.Invoke(() =>
-                    {
-                        stop = (MessageBoxResult.Yes == MessageBox.Show("Are you sure you want to cancel?", "", MessageBoxButton.YesNo));
-                    });
-                    if (stop)
-                        break;
-                }
+                if (cancelToken.IsCancellationRequested)
+                    break;
 
                 try
                 {
@@ -285,19 +277,27 @@ namespace DentalManagerPlugin
                     }
 
                     AddText($"{orderDir.Name}: uploading...", Visual.Severities.Good);
-                    // do not allow cancel within operation (would be complicated to handle)
                     using (var ms = orderHandler.ZipOrderFiles(filterOutput.AllPaths))
-                        await _expressClient.Upload(orderHandler.OrderId + ".zip", ms, CancellationToken.None);
+                        await _expressClient.Upload(orderHandler.OrderId + ".zip", ms, cancelToken);
                     AddText($"{orderDir.Name}: uploaded.", Visual.Severities.Good, true);
 
                     summary.NoUploadedNow++;
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    // do not stop loop just because one case failed
-                    AddText($"{orderDir.Name}: error.", Visual.Severities.Error);
-                    summary.NoNotQualifiedNow++;
-                    continue;
+                    if (ex is OperationCanceledException ||
+                            ex is AggregateException aex && aex.InnerExceptions.Any(iaex => iaex is OperationCanceledException))
+                    {
+                        AddText($"{orderDir.Name}: upload cancelled.", Visual.Severities.Warning, true);
+                        break; // also stop other uploads
+                    }
+                    else
+                    {
+                        // do not stop loop just because one case failed
+                        AddText($"{orderDir.Name}: error.", Visual.Severities.Error);
+                        summary.NoNotQualifiedNow++;
+                        continue;
+                    }
                 }
             }
 
@@ -308,7 +308,7 @@ namespace DentalManagerPlugin
         {
             try
             {
-                _cancellationTokenSource?.Cancel();
+               _cancellationTokenSource?.Cancel();
             }
             catch (Exception exception)
             {
