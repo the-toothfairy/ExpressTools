@@ -161,7 +161,7 @@ namespace DentalManagerPlugin
                 if (storedCookie.Expires < DateTime.UtcNow.AddMinutes(-15))
                     return false;
 
-                if (storedCookie.Domain != _httpClient.BaseAddress.Authority)
+                if (storedCookie.Domain != _httpClient.BaseAddress.Host)
                     return false;
 
                 _httpClientHandler.CookieContainer.Add(_httpClient.BaseAddress, storedCookie); // will replace any existing one

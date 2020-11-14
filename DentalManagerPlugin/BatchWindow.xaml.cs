@@ -1,14 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Collections.ObjectModel;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Shapes;
 using System.Windows.Forms;
 using System.IO;
 using System.Threading;
@@ -32,13 +29,50 @@ namespace DentalManagerPlugin
 
         private CancellationTokenSource _cancellationTokenSource;
 
+        private BatchSummary _summary;
+
+        public ObservableCollection<UploadItem> UploadItems { get; } = new ObservableCollection<UploadItem>();
+
+        /// <summary>
+        /// for list view. checkable item. notifies if check state changed
+        /// </summary>
+        public class UploadItem : INotifyPropertyChanged
+        {
+            private bool _upload;
+
+            public bool Upload
+            {
+                get => _upload;
+                set
+                {
+                    if (value == _upload)
+                        return;
+                    _upload = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Upload)));
+                }
+            }
+
+            public bool Uploaded { get; set; }
+
+            internal OrderHandler OrderHandler { get; set; }
+
+            internal List<string> AllPaths { get; set; }
+
+            public string OrderName => OrderHandler?.OrderId;
+
+            public string Message { get; set; }
+            public Brush MessageBrush { get; set; }
+
+            public event PropertyChangedEventHandler PropertyChanged;
+        }
+
         private class BatchSummary
         {
             internal int NoInDirectory { get; set; }
             internal int NoCreatedInPeriod { get; set; }
             internal int NoUploadedBefore { get; set; }
-            internal int NoUploadedNow { get; set; }
-            internal int NoNotQualifiedNow { get; set; }
+            internal int NoQualified { get; set; }
+            internal int NoSelected { get; set; }
         }
 
         public BatchWindow()
@@ -46,20 +80,28 @@ namespace DentalManagerPlugin
             InitializeComponent();
         }
 
+        private Brush MessageBrush(Visual.Severities severity) => new SolidColorBrush(Visual.MessageColors[severity]);
+
         /// <summary>
-        /// add a paragraph with given <paramref name="text"/>. Can also replace last.
+        /// set the message as <paramref name="text"/>.
         /// </summary>
-        private void AddText(string text, Visual.Severities severity, bool replace = false)
+        private void ShowOverallMessage(string text, Visual.Severities severity)
         {
             Dispatcher?.Invoke(() =>
             {
-                if (replace)
-                    Par.Inlines.Remove(Par.Inlines.LastInline);
-
-                var color = Visual.MessageColors[severity];
-                var run = new Run("\n" + text) { Foreground = new SolidColorBrush(color) };
-                Par.Inlines.Add(run);
+                TextMessage.Text = text;
+                TextMessage.Foreground = MessageBrush(severity);
             });
+        }
+
+        private void ShowSummary()
+        {
+            if (_summary == null)
+                return;
+            var nc = _summary.NoCreatedInPeriod;
+            var txt = $"Orders created in period: {nc};  uploaded earlier: {_summary.NoUploadedBefore};  " +
+                $"qualifying now: {_summary.NoQualified};  selected: {_summary.NoSelected}";
+            ShowOverallMessage(txt, Visual.Severities.Info);
         }
 
         /// <summary>
@@ -79,7 +121,7 @@ namespace DentalManagerPlugin
         private void RefreshLoginDependentControls(bool loggedIn, bool remembered)
         {
             ShowLoginInTitle(loggedIn ? _idSettings.UserLogin : "");
-            ButtonStart.IsEnabled = loggedIn;
+            ButtonStartOrContinue.IsEnabled = loggedIn;
             ButtonCancel.IsEnabled = loggedIn;
             ButtonLogout.Visibility = loggedIn && remembered ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -94,7 +136,7 @@ namespace DentalManagerPlugin
 
                 TextOrderDir.Text = _appSettings.OrdersRootDirectory;
 
-                var uri = _appSettings.GetUri();
+                var uri = _appSettings.GetUri(true); // TODO CHANGE
 
                 _expressClient = new ExpressClient(uri);
 
@@ -117,13 +159,16 @@ namespace DentalManagerPlugin
                 {
                     RefreshLoginDependentControls(true, true);
                 }
+
+                ListViewUploads.ItemsSource = UploadItems; // bind first, so user can see progress of list being filled
+                await RefreshUploadsList();
+
+                ButtonStartOrContinue.IsEnabled = UploadItems.Any();
             }
             catch (Exception exception)
             {
-                AddText(exception.Message, Visual.Severities.Error);
-
-                AddText(exception.StackTrace, Visual.Severities.Error);
-
+                ShowOverallMessage(exception.Message, Visual.Severities.Error);
+                ShowOverallMessage(exception.StackTrace, Visual.Severities.Error);
                 RefreshLoginDependentControls(false, false);
                 return;
             }
@@ -143,12 +188,12 @@ namespace DentalManagerPlugin
                     return; // should not happen, but to be save
 
                 await _expressClient.Logout();
-                AddText("You are logged out", Visual.Severities.Info);
+                ShowOverallMessage("You are logged out", Visual.Severities.Info);
                 RefreshLoginDependentControls(false, false);
             }
             catch (Exception)
             {
-                AddText("Error during log out", Visual.Severities.Error);
+                ShowOverallMessage("Error during log out", Visual.Severities.Error);
             }
         }
 
@@ -169,73 +214,48 @@ namespace DentalManagerPlugin
             }
             catch (Exception exception)
             {
-                AddText(exception.Message, Visual.Severities.Error);
+                ShowOverallMessage(exception.Message, Visual.Severities.Error);
             }
         }
 
-        private async void ButtonStart_Click(object sender, RoutedEventArgs e)
+        private async Task RefreshUploadsList()
         {
             var origCursor = Cursor;
 
             try
             {
-                Par.Inlines.Clear();
+                Cursor = Cursors.Wait;
 
-                var orderBaseDi = new DirectoryInfo(_appSettings.OrdersRootDirectory);
-                if (!orderBaseDi.Exists)
+                foreach (var upItem in UploadItems)
+                    upItem.PropertyChanged -= UploadCheckChanged;
+                UploadItems.Clear();
+                Dispatcher.Invoke(() => ButtonStartOrContinue.Content = "Start Uploading"); // may get disabled
+
+                ShowOverallMessage("", Visual.Severities.Good);
+
+                var orderBaseDirInfo = new DirectoryInfo(_appSettings.OrdersRootDirectory);
+                if (!orderBaseDirInfo.Exists)
                 {
-                    AddText("Order directory does not exist", Visual.Severities.Error);
+                    ShowOverallMessage("Orders root directory does not exist", Visual.Severities.Error);
                     return;
                 }
-
-                var subDirs = orderBaseDi.GetDirectories("", SearchOption.TopDirectoryOnly);
-
-                _cancellationTokenSource?.Dispose();
-                _cancellationTokenSource = new CancellationTokenSource();
-                var cancelToken = _cancellationTokenSource.Token;
 
                 var bDouble = double.TryParse(TextLastHours.Text, out var hours);
                 if (!bDouble)
                 {
-                    AddText("Invalid input for hours (wrong decimal separator?)", Visual.Severities.Error);
+                    ShowOverallMessage("Invalid input for hours (wrong decimal separator?)", Visual.Severities.Error);
                     return;
                 }
 
-                var cutOff = DateTime.UtcNow.AddHours(-hours);
-                Cursor = Cursors.Wait;
+                var cutoffUtc = DateTime.UtcNow.AddHours(-hours);
+                var subDirs = orderBaseDirInfo.GetDirectories("", SearchOption.TopDirectoryOnly);
 
-                var summary = await RunAll(subDirs, cutOff, cancelToken);
+                _summary = new BatchSummary();
 
-                var text = $"\nTotal number of orders in order directory: {summary.NoInDirectory}\n";
-                text += $"Number of orders created in the last {hours} hours: {summary.NoCreatedInPeriod}\n";
-                text += $"  thereof uploaded earlier: {summary.NoUploadedBefore}; did not qualify: {summary.NoNotQualifiedNow}\n";
-                text += $"Number of orders uploaded now: {summary.NoUploadedNow}";
-
-                AddText(text, Visual.Severities.Info);
-            }
-            catch (Exception exception)
-            {
-                if (exception is OperationCanceledException || exception is AggregateException ae
-                        && ae.InnerExceptions.Any(ie => ie is OperationCanceledException))
-                    return; // should mostly be caught in task's try/catch
-
-                AddText(exception.Message, Visual.Severities.Error);
-            }
-
-            Cursor = origCursor;
-        }
-
-        private async Task<BatchSummary> RunAll(DirectoryInfo[] orderDirs, DateTime cutoffUtc, CancellationToken cancelToken)
-        {
-            var summary = new BatchSummary();
-
-            foreach (var orderDir in orderDirs)
-            {
-                if (cancelToken.IsCancellationRequested)
-                    break;
-
-                try
+                foreach (var orderDir in subDirs)
                 {
+                    ShowOverallMessage($"Examining {orderDir.Name}...", Visual.Severities.Info);
+
                     if (orderDir.Name == "ManufacturingDir") // special directory
                         continue;
 
@@ -243,80 +263,146 @@ namespace DentalManagerPlugin
                     if (orderHandler == null)
                         continue;
 
-                    summary.NoInDirectory++;
+                    _summary.NoInDirectory++;
 
                     orderHandler.GetStatusInfo(out var creationDateUtc, out var isScanned);
                     if (creationDateUtc < cutoffUtc || !isScanned)
                         continue; // no message, as there will often be many
 
-                    summary.NoCreatedInPeriod++;
+                    _summary.NoCreatedInPeriod++;
 
                     var resultData = await _expressClient.GetStatus(orderHandler.OrderId);
                     if (resultData.Count > 0) // uploaded before
                     {
-                        summary.NoUploadedBefore++;
+                        _summary.NoUploadedBefore++;
                         continue;
                     }
 
                     var filterOutput = await _expressClient.Filter(orderHandler.AllRelativePaths);
                     if (filterOutput == null || filterOutput.Kind == "")
-                    {
-                        summary.NoNotQualifiedNow++;
                         continue;
-                    }
 
                     using (var orderStream = orderHandler.GetStream(filterOutput.OrderPath))
                     using (var designStream = orderHandler.GetStream(filterOutput.DesignPath))
                     {
                         var msg = await _expressClient.Qualify(filterOutput, orderStream, designStream);
                         if (!string.IsNullOrEmpty(msg))
-                        {
-                            summary.NoNotQualifiedNow++;
                             continue;
-                        }
                     }
 
-                    AddText($"{orderDir.Name}: uploading...", Visual.Severities.Good);
-                    using (var ms = orderHandler.ZipOrderFiles(filterOutput.AllPaths))
-                        await _expressClient.Upload(orderHandler.OrderId + ".zip", ms, cancelToken);
-                    AddText($"{orderDir.Name}: uploaded.", Visual.Severities.Good, true);
+                    var upItem = new UploadItem { OrderHandler = orderHandler, AllPaths = filterOutput.AllPaths, Upload = true };
+                    upItem.PropertyChanged += UploadCheckChanged;
+                    UploadItems.Add(upItem);
 
-                    summary.NoUploadedNow++;
+                    _summary.NoQualified++;
+                    _summary.NoSelected++;
+                }
+
+                ShowSummary();
+            }
+            catch (Exception ex)
+            {
+                ShowOverallMessage($"Error: {ex.Message}", Visual.Severities.Error);
+            }
+            finally
+            {
+                Cursor = origCursor;
+                Dispatcher.Invoke(() => ButtonStartOrContinue.IsEnabled = _summary?.NoSelected > 0);
+            }
+        }
+
+        private void UploadCheckChanged(object sender, PropertyChangedEventArgs args)
+        {
+            if (_summary == null)
+                return;
+
+            _summary.NoSelected = UploadItems.Count(ui => ui.Upload);
+            ShowSummary();
+        }
+
+        private async void ButtonStart_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                ListViewUploads.IsEnabled = false; // do not allow checkbox changes during upload
+
+                _cancellationTokenSource?.Dispose();
+                _cancellationTokenSource = new CancellationTokenSource();
+                var cancelToken = _cancellationTokenSource.Token;
+
+                await RunAll(cancelToken);
+
+                if (UploadItems.Any(ui => !ui.Uploaded)) // cancelled?
+                    ButtonStartOrContinue.Content = "Continue Uploading";
+                else
+                    ButtonStartOrContinue.IsEnabled = false;
+            }
+            catch (Exception exception)
+            {
+                ShowOverallMessage(exception.Message, Visual.Severities.Error);
+            }
+            finally
+            {
+                ListViewUploads.IsEnabled = true;
+            }
+        }
+
+        private async Task RunAll(CancellationToken cancelToken)
+        {
+            foreach (var uploadItem in UploadItems)
+            {
+                if (cancelToken.IsCancellationRequested)
+                {
+                    ShowOverallMessage("Uploads cancelled.", Visual.Severities.Warning);
+                    break;
+                }
+
+                // user unselected, or was uploaded, then other item's upload canceled, so this item still in list when
+                // upload continued
+                if (!uploadItem.Upload || uploadItem.Uploaded)
+                    continue;
+
+                try
+                {
+                    uploadItem.Message = "uploading...";
+                    uploadItem.MessageBrush = MessageBrush(Visual.Severities.Info);
+
+                    using (var ms = uploadItem.OrderHandler.ZipOrderFiles(uploadItem.AllPaths))
+                        await _expressClient.Upload(uploadItem.OrderHandler.OrderId + ".zip", ms, cancelToken);
+
+                    uploadItem.Message = "uploaded";
+                    uploadItem.MessageBrush = MessageBrush(Visual.Severities.Good);
+                    uploadItem.Uploaded = true;
                 }
                 catch (Exception ex)
                 {
                     if (ex is OperationCanceledException ||
                             ex is AggregateException aex && aex.InnerExceptions.Any(iaex => iaex is OperationCanceledException))
                     {
-                        AddText($"{orderDir.Name}: upload cancelled.", Visual.Severities.Warning, true);
+                        uploadItem.Message = "upload cancelled";
+                        uploadItem.MessageBrush = MessageBrush(Visual.Severities.Warning);
                         break; // also stop other uploads
                     }
                     else
                     {
                         // do not stop loop just because one case failed
-                        AddText($"{orderDir.Name}: error.", Visual.Severities.Error);
-                        summary.NoNotQualifiedNow++;
+                        uploadItem.Message = "Error: " + ex.Message;
+                        uploadItem.MessageBrush = MessageBrush(Visual.Severities.Error);
                         continue;
                     }
                 }
             }
-
-            return summary;
         }
 
         private void ButtonCancel_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-               _cancellationTokenSource?.Cancel();
+                _cancellationTokenSource?.Cancel();
             }
             catch (Exception exception)
             {
-                if (exception is OperationCanceledException || exception is AggregateException ae
-                             && ae.InnerExceptions.Any(ie => ie is OperationCanceledException))
-                    throw;
-
-                AddText(exception.Message, Visual.Severities.Error);
+                ShowOverallMessage(exception.Message, Visual.Severities.Error);
             }
         }
 
@@ -341,6 +427,18 @@ namespace DentalManagerPlugin
             }
             catch (Exception)
             {
+            }
+        }
+
+        private async void ButtonRefresh_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                await RefreshUploadsList();
+            }
+            catch (Exception exception)
+            {
+                ShowOverallMessage(exception.Message, Visual.Severities.Error);
             }
         }
     }
