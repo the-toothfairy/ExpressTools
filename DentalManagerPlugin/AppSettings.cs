@@ -13,9 +13,6 @@ namespace DentalManagerPlugin
     {
         public bool AutoUpload { get; set; }
 
-        /// <summary> typically c:\3shape </summary>
-        public string OrdersRootDirectory { get; set; }
-
         /// <summary> pref for window placement </summary>
         public double PluginWindowLeft { get; set; }
 
@@ -27,6 +24,12 @@ namespace DentalManagerPlugin
 
         /// <summary> pref for window placement </summary>
         public double PluginWindowHeight { get; set; }
+
+        /// <summary>batch. typically c:\3shape </summary>
+        public string OrdersRootDirectory { get; set; }
+
+        /// <summary>batch. how long back do we consider orders </summary>
+        public double BatchPeriodInHours { get; set; }
 
         public bool UseTestingServer { get; set; }
 

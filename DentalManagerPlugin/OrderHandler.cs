@@ -85,10 +85,11 @@ namespace DentalManagerPlugin
             return new FileStream(pa, FileMode.Open);
         }
 
-        public void GetStatusInfo(out DateTime creationDateUtc, out bool isScanned)
+        public void GetStatusInfo(out DateTime creationDateUtc, out bool isScanned, out bool isLocked)
         {
             creationDateUtc = DateTime.MinValue;
             isScanned = false;
+            isLocked = false;
 
             try
             {
@@ -99,19 +100,22 @@ namespace DentalManagerPlugin
                     is XElement meItem))
                     return;
 
-                if (!(meItem.Descendants().FirstOrDefault(n => n.Attribute("name")?.Value == "ProcessStatusID") is XElement manId)
-                    || !(meItem.Descendants().FirstOrDefault(n => n.Attribute("name")?.Value == "CreateDate") is XElement creaDate))
-                    return;
+                if (meItem.Descendants().FirstOrDefault(n => n.Attribute("name")?.Value == "CreateDate") is XElement creaDate)
+                {
+                    var unixDate = creaDate.Attribute("value")?.Value;
+                    if (unixDate != null && double.TryParse(unixDate, out var unixTimeStamp))
+                    {
+                        // Unix timestamp is seconds past epoch
+                        var dtDateTime = new DateTime(1970, 1, 1, 0, 0, 0, 0, System.DateTimeKind.Utc);
+                        creationDateUtc = dtDateTime.AddSeconds(unixTimeStamp);
+                    }
+                }
 
-                var unixDate = creaDate.Attribute("value")?.Value;
-                if (unixDate == null || !double.TryParse(unixDate, out var unixTimeStamp))
-                    return;
+                if (meItem.Descendants().FirstOrDefault(n => n.Attribute("name")?.Value == "ProcessStatusID") is XElement psId)
+                    isScanned = psId.Attribute("value")?.Value == "psScanned";
 
-                isScanned = manId.Attribute("value")?.Value == "psScanned";
-
-                // Unix timestamp is seconds past epoch
-                var dtDateTime = new DateTime(1970, 1, 1, 0, 0, 0, 0, System.DateTimeKind.Utc);
-                creationDateUtc = dtDateTime.AddSeconds(unixTimeStamp);
+                if (meItem.Descendants().FirstOrDefault(n => n.Attribute("name")?.Value == "ProcessLockID") is XElement plId)
+                    isLocked = plId.Attribute("value")?.Value == "plCheckedOut";
             }
             catch (Exception)
             { // nothing
@@ -127,7 +131,7 @@ namespace DentalManagerPlugin
             var res = new MemoryStream();
             using (var newArchive = new ZipArchive(res, ZipArchiveMode.Create, true, Encoding.UTF8))
             {
-                foreach ( var relPath in relPaths )
+                foreach (var relPath in relPaths)
                 {
                     // careful with sub-directories (scans)
                     var fullPath = FullPath(relPath);

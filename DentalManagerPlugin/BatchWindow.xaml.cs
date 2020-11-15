@@ -29,9 +29,12 @@ namespace DentalManagerPlugin
 
         private CancellationTokenSource _cancellationTokenSource;
 
-        private BatchSummary _summary;
+        private BatchSummary _summary = new BatchSummary();
 
-        public ObservableCollection<UploadItem> UploadItems { get; } = new ObservableCollection<UploadItem>();
+        private readonly ObservableCollection<UploadItem> _uploadItems;
+        private readonly object _collectionLock = new object();
+
+        public ObservableCollection<UploadItem> UploadItems => _uploadItems;
 
         /// <summary>
         /// for list view. checkable item. notifies if check state changed
@@ -60,8 +63,16 @@ namespace DentalManagerPlugin
 
             public string OrderName => OrderHandler?.OrderId;
 
-            public string Message { get; set; }
-            public Brush MessageBrush { get; set; }
+            public string Message { get; private set; }
+            public Brush MessageBrush { get; private set; }
+
+            public void ShowMessage(string msg, Visual.Severities sev)
+            {
+                Message = msg;
+                MessageBrush = new SolidColorBrush(Visual.MessageColors[sev]);
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Message)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MessageBrush)));
+            }
 
             public event PropertyChangedEventHandler PropertyChanged;
         }
@@ -73,14 +84,19 @@ namespace DentalManagerPlugin
             internal int NoUploadedBefore { get; set; }
             internal int NoQualified { get; set; }
             internal int NoSelected { get; set; }
+            internal int NoUploadedNow { get; set; }
         }
 
         public BatchWindow()
         {
             InitializeComponent();
+
+            _uploadItems = new ObservableCollection<UploadItem>();
+            // need support for multi-threading
+            System.Windows.Data.BindingOperations.EnableCollectionSynchronization(_uploadItems, _collectionLock);
+            ListViewUploads.ItemsSource = UploadItems;
         }
 
-        private Brush MessageBrush(Visual.Severities severity) => new SolidColorBrush(Visual.MessageColors[severity]);
 
         /// <summary>
         /// set the message as <paramref name="text"/>.
@@ -90,17 +106,16 @@ namespace DentalManagerPlugin
             Dispatcher?.Invoke(() =>
             {
                 TextMessage.Text = text;
-                TextMessage.Foreground = MessageBrush(severity);
+                TextMessage.Foreground = new SolidColorBrush(Visual.MessageColors[severity]);
             });
         }
 
         private void ShowSummary()
         {
-            if (_summary == null)
-                return;
             var nc = _summary.NoCreatedInPeriod;
             var txt = $"Orders created in period: {nc};  uploaded earlier: {_summary.NoUploadedBefore};  " +
-                $"qualifying now: {_summary.NoQualified};  selected: {_summary.NoSelected}";
+                $"qualifying now: {_summary.NoQualified};  selected: {_summary.NoSelected};  " +
+                $"uploaded now: {_summary.NoUploadedNow}";
             ShowOverallMessage(txt, Visual.Severities.Info);
         }
 
@@ -136,7 +151,7 @@ namespace DentalManagerPlugin
 
                 TextOrderDir.Text = _appSettings.OrdersRootDirectory;
 
-                var uri = _appSettings.GetUri(true); // TODO CHANGE
+                var uri = _appSettings.GetUri(false); // TODO CHANGE
 
                 _expressClient = new ExpressClient(uri);
 
@@ -160,7 +175,9 @@ namespace DentalManagerPlugin
                     RefreshLoginDependentControls(true, true);
                 }
 
-                ListViewUploads.ItemsSource = UploadItems; // bind first, so user can see progress of list being filled
+                if (_appSettings.BatchPeriodInHours > 0)
+                    TextLastHours.Text = _appSettings.BatchPeriodInHours.ToString();
+
                 await RefreshUploadsList();
 
                 ButtonStartOrContinue.IsEnabled = UploadItems.Any();
@@ -265,8 +282,8 @@ namespace DentalManagerPlugin
 
                     _summary.NoInDirectory++;
 
-                    orderHandler.GetStatusInfo(out var creationDateUtc, out var isScanned);
-                    if (creationDateUtc < cutoffUtc || !isScanned)
+                    orderHandler.GetStatusInfo(out var creationDateUtc, out var isScanned, out var isLocked);
+                    if (creationDateUtc < cutoffUtc || !isScanned || isLocked)
                         continue; // no message, as there will often be many
 
                     _summary.NoCreatedInPeriod++;
@@ -299,6 +316,7 @@ namespace DentalManagerPlugin
                 }
 
                 ShowSummary();
+                Dispatcher.Invoke(() => ButtonStartOrContinue.IsEnabled = UploadItems.Any());
             }
             catch (Exception ex)
             {
@@ -307,20 +325,19 @@ namespace DentalManagerPlugin
             finally
             {
                 Cursor = origCursor;
-                Dispatcher.Invoke(() => ButtonStartOrContinue.IsEnabled = _summary?.NoSelected > 0);
+                Dispatcher.Invoke(() => ButtonStartOrContinue.IsEnabled = _summary.NoSelected > 0);
             }
         }
 
         private void UploadCheckChanged(object sender, PropertyChangedEventArgs args)
         {
-            if (_summary == null)
-                return;
+            ButtonStartOrContinue.IsEnabled = UploadItems.Any(ui => !ui.Uploaded && ui.Upload);
 
             _summary.NoSelected = UploadItems.Count(ui => ui.Upload);
             ShowSummary();
         }
 
-        private async void ButtonStart_Click(object sender, RoutedEventArgs e)
+        private async void ButtonStartOrContinue_Click(object sender, RoutedEventArgs e)
         {
             try
             {
@@ -332,10 +349,8 @@ namespace DentalManagerPlugin
 
                 await RunAll(cancelToken);
 
-                if (UploadItems.Any(ui => !ui.Uploaded)) // cancelled?
-                    ButtonStartOrContinue.Content = "Continue Uploading";
-                else
-                    ButtonStartOrContinue.IsEnabled = false;
+                ButtonStartOrContinue.Content = "Continue Uploading"; // next time
+                ButtonStartOrContinue.IsEnabled = UploadItems.Any(ui => !ui.Uploaded && ui.Upload);
             }
             catch (Exception exception)
             {
@@ -364,31 +379,28 @@ namespace DentalManagerPlugin
 
                 try
                 {
-                    uploadItem.Message = "uploading...";
-                    uploadItem.MessageBrush = MessageBrush(Visual.Severities.Info);
+                    uploadItem.ShowMessage("uploading...", Visual.Severities.Info);
 
                     using (var ms = uploadItem.OrderHandler.ZipOrderFiles(uploadItem.AllPaths))
                         await _expressClient.Upload(uploadItem.OrderHandler.OrderId + ".zip", ms, cancelToken);
 
-                    uploadItem.Message = "uploaded";
-                    uploadItem.MessageBrush = MessageBrush(Visual.Severities.Good);
+                    uploadItem.ShowMessage("uploaded", Visual.Severities.Good);
                     uploadItem.Uploaded = true;
+                    _summary.NoUploadedNow++;
+                    ShowSummary();
                 }
                 catch (Exception ex)
                 {
                     if (ex is OperationCanceledException ||
                             ex is AggregateException aex && aex.InnerExceptions.Any(iaex => iaex is OperationCanceledException))
                     {
-                        uploadItem.Message = "upload cancelled";
-                        uploadItem.MessageBrush = MessageBrush(Visual.Severities.Warning);
+                        uploadItem.ShowMessage("upload cancelled", Visual.Severities.Warning);
                         break; // also stop other uploads
                     }
                     else
                     {
-                        // do not stop loop just because one case failed
-                        uploadItem.Message = "Error: " + ex.Message;
-                        uploadItem.MessageBrush = MessageBrush(Visual.Severities.Error);
-                        continue;
+                        uploadItem.ShowMessage("Error: " + ex.Message, Visual.Severities.Error);
+                        continue; // do not stop loop just because one case failed
                     }
                 }
             }
@@ -439,6 +451,25 @@ namespace DentalManagerPlugin
             catch (Exception exception)
             {
                 ShowOverallMessage(exception.Message, Visual.Severities.Error);
+            }
+        }
+
+        private void Window_Closing(object sender, CancelEventArgs e)
+        {
+            try
+            {
+                if (Directory.Exists(TextOrderDir.Text))
+                    _appSettings.OrdersRootDirectory = TextOrderDir.Text;
+                if (double.TryParse(TextLastHours.Text, out var bp))
+                    _appSettings.BatchPeriodInHours = bp;
+                AppSettings.Write(_appSettings);
+            }
+            catch (Exception)
+            {
+            }
+            finally
+            {
+                e.Cancel = false;
             }
         }
     }

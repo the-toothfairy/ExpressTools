@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:DentalManagerPlugin"
         mc:Ignorable="d"
-        Title="FC Express Batch Upload" Height="500" Width="600" Loaded="Window_Loaded" >
+        Title="FC Express Batch Upload" Height="500" Width="600" Loaded="Window_Loaded" Closing="Window_Closing"  >
     <Grid  Background="#f8f8f8">
         <Grid Margin="5">
             <Grid.RowDefinitions >
@@ -25,17 +25,32 @@
                 <TextBox Name="TextOrderDir" VerticalAlignment="Center" Margin="5,0,5,0" Height="25" Grid.Column="1" VerticalContentAlignment="Center"></TextBox>
                 <Button VerticalAlignment="Center" Height="25" Width="40" Grid.Column="2" VerticalContentAlignment="Top" ToolTip="Browse" Click="ButtonBrowse_Click">...</Button>
             </Grid>
-            <StackPanel Grid.Row="1" Orientation="Horizontal">
-                <Label VerticalAlignment="Center" Margin="0,5,0,5" VerticalContentAlignment="Center">Consider all new qualifying orders created within the last:</Label>
-                <TextBox Name="TextLastHours" VerticalAlignment="Center" Width="40" HorizontalContentAlignment="Right" VerticalContentAlignment="Center" Height="25" Margin="5,0,0,0" TextChanged="TextLastHours_TextChanged">24</TextBox>
-                <Label VerticalAlignment="Center" Margin="0,5,0,5">hours</Label>
-                <Button Name="ButtonRefresh" Height="25" Width="60" Click="ButtonRefresh_Click" Margin="10,0,0,0">Refresh</Button>
-            </StackPanel>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"></ColumnDefinition>
+                    <ColumnDefinition Width="Auto"></ColumnDefinition>
+                    <ColumnDefinition Width="Auto"></ColumnDefinition>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Margin="5" TextWrapping="Wrap">
+                    <Run>The list below shows all qualifying orders that are not checked out and that were created within the last...</Run>
+                </TextBlock>
+
+                <StackPanel Orientation="Horizontal" Grid.Column="1">
+                <TextBox Name="TextLastHours"  Width="40" HorizontalContentAlignment="Right" VerticalContentAlignment="Center"
+                         Height="25" Margin="5,0,0,0" VerticalAlignment="Bottom" TextChanged="TextLastHours_TextChanged">24</TextBox>
+                    <Label VerticalAlignment="Bottom">hours</Label>
+                </StackPanel>
+                <Button Grid.Column="2" Name="ButtonRefresh" Height="25" Width="90" VerticalAlignment="Bottom"
+                        Click="ButtonRefresh_Click" Margin="10,0,0,0">Refresh List</Button>
+
+            </Grid>
 
             <TextBox Name="TextMessage" Grid.Row="2" Height="25" IsReadOnly="true" Background="#fbfbfb" VerticalContentAlignment="Center" Padding="3,0,2,0" Margin="0,5,0,0">
             </TextBox>
 
-            <ListView Name="ListViewUploads" Grid.Row="3" ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto"
+            <ListView Name="ListViewUploads" Grid.Row="3" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                      ScrollViewer.HorizontalScrollBarVisibility="Auto"
                      HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                 <ListView.View>
                     <GridView>
@@ -53,7 +68,7 @@
                                 </DataTemplate>
                             </GridViewColumn.CellTemplate>
                         </GridViewColumn>
-                        <GridViewColumn Header="" Width="auto">
+                        <GridViewColumn Header="Progress" Width="250">
                             <GridViewColumn.CellTemplate>
                                 <DataTemplate>
                                     <TextBlock Margin="5, 0" Text="{Binding Message}" Foreground="{Binding MessageBrush}"/>
@@ -76,7 +91,7 @@
                 </Button>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,10,0,0" HorizontalAlignment="Right">
-                    <Button Name="ButtonStartOrContinue" Height="25" Width="130" Margin="0,0,10,0" Click="ButtonStart_Click">Start Upload</Button>
+                    <Button Name="ButtonStartOrContinue" Height="25" Width="130" Margin="0,0,10,0" Click="ButtonStartOrContinue_Click">Start Upload</Button>
                     <Button Name="ButtonCancel" Height="25" Width="80" Click="ButtonCancel_Click">Cancel</Button>
                 </StackPanel>
             </Grid>
