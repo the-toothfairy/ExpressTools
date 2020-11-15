@@ -148,7 +148,7 @@ namespace DentalManagerPlugin
                 this.CheckboxAutoUpload.Checked += CheckboxAutoUpload_CheckedChanged;
                 this.CheckboxAutoUpload.Unchecked += CheckboxAutoUpload_CheckedChanged;
 
-                var uri = _appSettings.GetUri(true); // TODO true only for debug
+                var uri = _appSettings.GetUri(true); // can change only for debug
 
                 _expressClient = new ExpressClient(uri);
 

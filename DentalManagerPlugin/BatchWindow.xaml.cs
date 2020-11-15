@@ -151,7 +151,7 @@ namespace DentalManagerPlugin
 
                 TextOrderDir.Text = _appSettings.OrdersRootDirectory;
 
-                var uri = _appSettings.GetUri(false); // TODO CHANGE
+                var uri = _appSettings.GetUri(false); // can change for tests
 
                 _expressClient = new ExpressClient(uri);
 
@@ -175,8 +175,10 @@ namespace DentalManagerPlugin
                     RefreshLoginDependentControls(true, true);
                 }
 
-                if (_appSettings.BatchPeriodInHours > 0)
+                if (_appSettings.BatchPeriodInHours > 0.001)
                     TextLastHours.Text = _appSettings.BatchPeriodInHours.ToString();
+                else
+                    TextLastHours.Text = "24";
 
                 await RefreshUploadsList();
 
